@@ -1,4 +1,4 @@
-import { JobListing } from "../types";
+import { JobListing } from "../types/JobListing";
 import { JobStatusBadge } from "./JobStatusBadge";
 import { cn } from "@/lib/utils";
 

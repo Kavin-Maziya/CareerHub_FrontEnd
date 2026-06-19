@@ -1,4 +1,4 @@
-import { EmploymentType } from "../types";
+import { EmploymentType } from "../types/JobListing";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
  

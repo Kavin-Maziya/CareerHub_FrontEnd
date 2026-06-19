@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react";
-import { JobListing } from "../types";
+import { JobListing } from "../types/JobListing";
 import JobList from "../components/JobList";
 
 const STORAGE_KEY = "careerhub:selectedRoomId";
