@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Roboto } from "next/font/google";
 import "./globals.css";
 import { ThemeToggle } from "../components/ThemeToggle";
+import Providers from "./providers"; // Import provider wrapper
 
 const roboto = Roboto({
   weight: ["300", "400", "500", "700"],
@@ -31,7 +32,7 @@ export default function RootLayout({
             <ThemeToggle />
           </div>
         </header>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
