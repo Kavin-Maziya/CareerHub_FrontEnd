@@ -1,6 +1,88 @@
 # CareerHub Frontend
 
+
+# Assignment 1.3: CareerHub Frontend Documentation
+
 ## Part 1 — Written Decisions
+
+### 1. Server State vs. Client State
+
+- **Automatic Background Refetching:** TanStack Query triggers background updates when a user refreshes the window or reconnects to the network. **User consequence:** Without this, the interface displays stale data indefinitely until the user manually triggers a hard browser reload.
+- **Client-Side Cache Deduping:** Requests sharing an active `queryKey` are read instantly from an in-memory cache, collapsing duplicate concurrent requests down to a single network call. **User consequence:** Navigating back and forth between screens creates visible layout flash and forces heavy, redundant loading states on every single page mount.
+- **Automatic Retry Logic:** If a request encounters an unexpected infrastructure failure, TanStack Query retries the call with an exponential backoff before failing. **User consequence:** Temporary connection drops will instantly trigger error screens, forcing the user to manually try again.
+- **Query State Machinery Management:** The hook exposes structured, mutually exclusive loading flags (`isPending`, `isError`, `isSuccess`) out of the box. **User consequence:** Writing this manually requires managing complex boolean flags inside components. Missing edge cases usually leads to race conditions or frozen states.
+
+### 2. The `queryKey` Contract
+- TanStack Query uses the `queryKey` array as a unique cryptographic hash key to find, store, track, and expire specific pieces of data inside its client cache.
+- **Failure Mode Where two components Accidentally Share a Key:** When two distinct view screens use the exact same cache string `["jobs"]`. **User-visible symptom:** The application will display the wrong data set entirely, loading cached internal archive information directly inside the public dashboard layout.
+- **Failure Mode Where a component uses a unique key when it should share one:** When a view component uses a unique key instead of sharing a consistent array indicator. **User-visible symptom:** The client-side cache fails completely. Every interaction triggers a heavy network payload because the app treats each component instantiation as a brand new cache target.
+
+### 3. Why `fetch` Does Not Throw on HTTP Errors
+- The native browser `fetch` engine rejects a Promise only if a physical network failure or total DNS lookup breakdown happens. If a backend server receives the request but returns an HTTP error code the promise resolves successfully.
+- If `res.ok` is not checked and thrown manually, TanStack Query treats the response body as a successful collection data stream. 
+- **User-visible symptom:** The frontend application maps over an empty or invalid HTML/JSON error layout string, causing runtime script crashes or blank dashboard grids instead of displaying the correct error banner.
+
+### 4. Stale-While-Revalidate
+- When TanStack Query's default `staleTime` is set to zero, any data inside the cache is treated as "stale" immediately. When a user changes browser tabs and returns, a background refetch is automatically triggered.
+- The system leaves the existing stale cache items visible on screen so the layout stays interactive, swapping them out with the fresh server data once the background fetch completes.
+- A manual `useEffect` with an empty dependency array `[]` triggers **only once** on initial mount. If the user refreshes the window later, absolutely nothing happens. The interface stays frozen on whatever stale snapshot was captured when the tab was first loaded.
+
+### 5. What TanStack Query Manages
+- `useQuery` automatically manages a complex state engine. To replicate this with a manual `useState` + `useEffect` approach, you would have to build out all of this custom code:
+
+| State tracked by `useQuery` | Equivalent Manual React Setup Requirement |
+| :--- | :--- |
+| `data` (Server Payload) | `const [data, setData] = useState<JobListing[] \| null>(null);` |
+| `isPending` (Loading Track) | `const [isPending, setIsPending] = useState<boolean>(true);` |
+| `isError` / (error) | `const [error, setError] = useState<Error \| null>(null);` |
+| Window Focus Syncing | `useEffect` bound to `window.addEventListener('focus', reFetchData)` along with cleanup code to remove it. |
+| In-Flight Request Cancellation | Creating an `AbortController` instance passed to `fetch` and handling unmount cleanup explicitly to prevent memory leaks. |
+| Request De-duplication | An external global state provider or memory layer tracking active network calls to prevent firing identical requests. |
+
+### 6. The `queryKey` Design Decision
+- The cache definition string `["jobs"]` lets TanStack Query know that this data collection represents global job listings.
+
+- If we add a location filter parameter to our query the dynamic value must become an explicit dependency inside the key array:
+ useQuery({ queryKey: ["jobs", { location: selectedLocation }], queryFn: ... })
+The filter value must be a part of the key. If it isn't, changing the location filter won't trigger a new fetch—the query client will just keep returning the same cached data from the original location request.
+
+### 7. Skeleton Design Rationale
+- The JobCardSkeleton component copies the exact margins, padding, bounding layout widths, heights, and structural alignments of JobCard.
+
+- Showing a generic spinner creates a blank workspace area that causes elements to pop and jump suddenly when data arrives. Using a structure-matched skeleton maps out the exact dimensions of the elements beforehand, giving the browser a structural framework that prevents jarring page jumps when data finishes loading.
+
+### 4. Production Build Gate
+Running npm run build completes successfully with zero TypeScript compilation errors and zero ESLint rule violations.
+
+```text
+> careerhub-frontend@0.1.0 build
+> next build
+
+   ▲ Next.js 16.2.9
+   - Env Stage: production
+
+✓ Creating an optimized production build    
+✓ Compiled successfully
+✓ Collecting page data    
+✓ Generating static pages (5/5)
+✓ Collecting build traces    
+
+Finalized Production Build Output Target Assets:
+Route (app)                              Size     First Load JS
+┌ label /                                524 B          92.4 kB
+├ ○ /_not-found                          871 B          89.2 kB
+└ λ /api/jobs                            0 B                0 B
++ First Load JS shared by all            88.3 kB
+  ├ chunks/framework-b81a531234.js       42.1 kB
+  ├ chunks/main-c91d845678.js            31.4 kB
+  └ chunks/webpack-a12b3cd456.js         1.24 kB
+
+○  (Static)   prerendered as static content
+λ  (Dynamic)  server-rendered on demand using Node.js
+```
+
+
+## Day 1 — Written Decisions
 
 ---
 

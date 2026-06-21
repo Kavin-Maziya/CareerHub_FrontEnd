@@ -1,4 +1,4 @@
-import { JobListing } from "../types";
+import { JobListing } from "../types/JobListing";
 import JobCard from "./JobCard";
 
 interface JobListProps {

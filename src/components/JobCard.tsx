@@ -1,6 +1,6 @@
-import { JobListing } from "../types";
+import { JobListing } from "../types/JobListing";
 import { JobStatusBadge } from "./JobStatusBadge";
-import { cn } from "@/lib/utils";
+import { cn } from "@/src/lib/utils";
 
 interface JobCardProps {
   job: JobListing;
