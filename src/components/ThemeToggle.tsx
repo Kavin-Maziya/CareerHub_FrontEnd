@@ -26,7 +26,7 @@ export function ThemeToggle() {
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
       className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:bg-gray-800"
     >
-      {isDark ? "Light" : "Dark"}
+      {isDark ? "Light Mode" : "Dark Mode"}
     </button>
   );
 }

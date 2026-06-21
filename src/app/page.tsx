@@ -60,7 +60,7 @@ export default function Home() {
         <div className="w-full max-w-md rounded-xl border border-red-200 bg-red-50 p-6 text-center shadow-sm dark:border-red-900/50 dark:bg-red-950/20">
           <div className="text-2xl mb-2">⚠️</div>
           <h3 className="text-lg font-semibold text-red-900 dark:text-red-200">
-            Failed to Load Listings
+            Failed to Load Job Listings
           </h3>
           <p className="mt-2 text-sm text-red-700 dark:text-red-400">
             {error instanceof Error ? error.message : "An unknown network error occurred."}
