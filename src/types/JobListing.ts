@@ -3,7 +3,7 @@ export type EmploymentType = "FullTime" | "PartTime" | "Contract" | "Internship"
 export interface JobListing {
   id: string; 
   title: string;
-  company: string;
+  companyName: string;
   location: string;
   employmentType: EmploymentType;
   salaryMin: number;
