@@ -2,16 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchJobs } from "../lib/api";
+import { fetchJobs } from "../lib/jobsApi";
 import JobList from "../components/JobList";
 import JobListSkeleton from "../components/JobCardSkeleton";
+import ApplicationForm from "../components/ApplicationForm";
 
 const STORAGE_KEY = "careerhub:selectedRoomId";
 
 export default function Home() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Core TanStack Query Initialization
   const {
     data: jobs,
     isPending,
@@ -23,14 +23,12 @@ export default function Home() {
     queryFn: fetchJobs,
   });
 
-  // Calculate selected job dynamically when data is available
   const selectedJob = jobs?.find((j) => j.id === selectedId) ?? null;
 
   function handleSelect(id: string) {
     setSelectedId((prev) => (prev === id ? null : id));
   }
 
-  // sessionStorage adaptation: Removes validation guard loop entirely
   useEffect(() => {
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored !== null) {
@@ -38,7 +36,6 @@ export default function Home() {
     }
   }, []);
 
-  // Synchronize state changes back to storage
   useEffect(() => {
     if (selectedId !== null) {
       sessionStorage.setItem(STORAGE_KEY, selectedId);
@@ -47,13 +44,10 @@ export default function Home() {
     }
   }, [selectedId]);
 
-  // Pending State Nothing else renders while isPending is true.
   if (isPending) {
     return <JobListSkeleton />;
   }
 
-  // Error State Displays error.message, with a "Try again" button calling refetch(),
-  // Does NOT render the job grid layout.
   if (isError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6 dark:bg-gray-950">
@@ -76,7 +70,6 @@ export default function Home() {
     );
   }
 
-  // Success State Renders JobList with a short-circuit guard ensuring JobList is never rendered while jobs is undefined.
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-10 dark:bg-gray-950 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
@@ -92,7 +85,7 @@ export default function Home() {
             <p className="mt-0.5 text-lg font-semibold text-blue-900 dark:text-blue-100">
               {selectedJob.title}
             </p>
-            <p className="text-sm text-blue-700 dark:text-blue-300">{selectedJob.company}</p>
+            <p className="text-sm text-blue-700 dark:text-blue-300">{selectedJob.companyName}</p>
           </div>
         )}
 
@@ -105,6 +98,12 @@ export default function Home() {
             />
           )}
         </div>
+
+        {!isPending && !isError && selectedJob !== null && (
+          <div className="mt-10">
+            <ApplicationForm jobId={selectedJob.id} jobTitle={selectedJob.title} />
+          </div>
+        )}
       </div>
     </main>
   );
