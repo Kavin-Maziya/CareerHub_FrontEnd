@@ -1,5 +1,41 @@
 # CareerHub Frontend
 
+## Assignment 2.1: CareerHub App Router
+
+## Part 1 - Written Decisions
+### 1. cache: "no-store" vs the Default
+- HTTP Layer Mechanics: Adding { cache: "no-store" } bypasses the cache entirely at the Next.js server-side layer (the Data Cache). When a request hits the Next.js server, it forces the server to make a new, live HTTP fetch call to your backend C# API rather than serving a pre-rendered or cached JSON object.
+
+- Deliberate Default Cache Behavior: You would use the default cached behavior for static, slow-changing resource data—such as a list of global company benefits, industry dropdown selection arrays, or standardized structural data. Caching these drastically reduces backend processing load and reduces page response times.
+
+- Comparison with TanStack Query: TanStack Query operates entirely within the client's browser memory. It relies on staleTime and triggers re-fetches via client-side DOM window focus events. Conversely, Next.js fetch caching lives strictly on the server host environment. Next.js has no native window execution context, meaning it cannot detect if a user has clicked away or focused on their browser window; cache validation rules are evaluated purely during the server-side request execution lifecycle.
+
+### 2. The "use client" Boundary and What Crosses It
+- The Boundary Definition: The "use client" directive does not mark an isolated component; it marks a module dependency boundary file line. Once declared at the top of a file, every sub-component or utility imported into that file automatically joins the client-side JavaScript bundle execution tree.
+
+- Server Component Contribution: The Server Component executes on the host machine, executes the backend API requests, converts data into a structural framework, and outputs static, pre-rendered semantic HTML markup representing the static details (Title, Company, Description).
+
+- Client Component Contribution: The Client Component contributes interactivity and hydration instructions. The server sends down the initial HTML layout shell for the form fields, along with a JavaScript bundle containing the code for state management, Zod processing hooks, and click events.
+
+- Browser Response Payload (/jobs/some-id): The browser receives a single initial HTTP stream response containing full structural HTML markup representing both the job details and the basic shell elements of the form. Alongside this markup is an optimized JavaScript bundle payload. Once loaded, React matches the DOM tree layout to the JS logic (hydration), making your interactive elements operational without forcing a blank-screen delay.
+
+### 3. Why params.id is Always a String
+- String Typing Reason: Next.js parses structural URL segments directly from the browser window's global HTTP address string context. Because an HTTP text routing line possesses no inherent data-typing schema metadata, all dynamic path parameters are universally interpreted as text strings.
+
+- GUID Conversion Requirements: Since your backend C# API accepts a string-based GUID (string match pattern), no manual conversion or parsing is necessary. You can feed params.id directly into your server-side fetch statement template string without casting it via parseInt() or any numerical operations.
+
+### 4. What "Layout Persists" Actually Means
+- React Definition: In strict React execution lifecycles, "does not re-render" means the layout component's DOM nodes are retained entirely within the Virtual DOM tree. The component function is not recalled, its local state hooks remain entirely intact, and the real DOM container elements are never unmounted or reconstructed in the browser window.
+
+- Dynamic Sidebar Strategy Without Client Components: To keep a live structural job listing metric count updated without resorting to a "use client" layout modification, you can rely on an Incremental Static Regeneration (ISR) data-fetching model inside the server layout, or pass a revalidation interval rule along with your layout data fetching configuration block:
+
+src/app/dashboard/layout.tsx
+```tsx
+const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/jobs/count`, { 
+  next: { revalidate: 0 }
+});
+```
+---
 
 ## Assignment 1.4: Applications & Mutations
 
