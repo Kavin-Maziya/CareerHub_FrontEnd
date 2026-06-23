@@ -1,69 +1,48 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { z } from "zod";
-import { cn } from "../lib/utils";
+import * as z from "zod";
+import { useMutation } from "@tanstack/react-query";
 import { submitApplication } from "../lib/applicationsApi";
 
-const applicationSchema = z
-  .object({
-    fullName: z.string().min(2, "Full name must be at least 2 characters").max(100),
-    email: z.string().email("Please enter a valid email address"),
-    phone: z
-      .string()
-      .regex(/^\+?[\d\s\-()\d]{8,15}$/, "Please enter a valid phone number")
-      .or(z.literal(""))
-      .transform((val) => (val === "" ? undefined : val))
-      .optional(), // Place at the end to make the object key optional
-    yearsOfExperience: z
-      .number()
-      .int("Must be a whole number")
-      .min(0, "Cannot be negative")
-      .max(50, "Maximum 50 years"),
-    coverLetter: z
-      .string()
-      .min(50, "Cover letter must be at least 50 characters — tell us why you're a strong fit")
-      .max(2000, "Cover letter must be under 2000 characters"),
-    linkedInUrl: z
-      .string()
-      .url("Please enter a valid URL")
-      .refine((val) => val.includes("linkedin.com"), "URL must be a LinkedIn profile")
-      .or(z.literal(""))
-      .transform((val) => (val === "" ? undefined : val))
-      .optional(), // Place at the end to make the object key optional
-    availableImmediately: z.boolean(),
-    noticePeriodWeeks: z
-      .number()
-      .int("Must be a whole number")
-      .min(0, "Cannot be negative"),
-  })
-  .refine(
-    (data) => data.availableImmediately || data.noticePeriodWeeks > 0,
-    {
-      message: "Notice period must be at least 1 week if you are not available immediately",
-      path: ["noticePeriodWeeks"],
-    }
-  );
+// Pure primitive validation blocks eliminate version conflicts across Zod variants
+const applicationSchema = z.object({
+  fullName: z.string().min(2, "Full name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  phone: z.string(),
+  yearsOfExperience: z.number().min(0, "Years of experience cannot be negative"),
+  coverLetter: z.string().min(10, "Cover letter must be at least 10 characters long"),
+  linkedInUrl: z.string(),
+  availableImmediately: z.boolean(),
+  noticePeriodWeeks: z.number().min(0, "Notice period cannot be negative"),
+}).refine((data) => {
+  if (!data.availableImmediately && data.noticePeriodWeeks <= 0) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Please specify your notice period if you are not available immediately",
+  path: ["noticePeriodWeeks"],
+});
 
-type ApplicationFormData = z.infer<typeof applicationSchema>;
+// Direct type inference ensures 100% synchronization with useForm
+type ApplicationFormValues = z.infer<typeof applicationSchema>;
 
 interface ApplicationFormProps {
   jobId: string;
   jobTitle: string;
+  onSuccess: (newApplicantId: string) => void;
 }
 
-export default function ApplicationForm({ jobId, jobTitle }: ApplicationFormProps) {
-  const queryClient = useQueryClient();
-
+export default function ApplicationForm({ jobId, jobTitle, onSuccess }: ApplicationFormProps) {
   const {
     register,
     handleSubmit,
+    watch,
     reset,
-    formState: { errors, isSubmitting },
-  } = useForm<ApplicationFormData>({
+    formState: { errors },
+  } = useForm<ApplicationFormValues>({
     resolver: zodResolver(applicationSchema),
     defaultValues: {
       fullName: "",
@@ -77,299 +56,143 @@ export default function ApplicationForm({ jobId, jobTitle }: ApplicationFormProp
     },
   });
 
+  const isAvailableImmediately = watch("availableImmediately");
+
   const mutation = useMutation({
-    mutationFn: submitApplication,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    mutationFn: (values: ApplicationFormValues) => 
+      submitApplication({ ...values, jobId }),
+    onSuccess: (response) => {
       reset();
+      if (response && response.applicantId) {
+        onSuccess(response.applicantId);
+      }
     },
   });
 
-  const isBusy = isSubmitting || mutation.isPending;
-
-  const onValid = async (data: ApplicationFormData) => {
-    await mutation.mutateAsync({ ...data, jobId });
+  const onSubmit = (data: ApplicationFormValues) => {
+    mutation.mutate(data);
   };
 
-  if (mutation.isSuccess) {
-    return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-6 dark:border-green-800 dark:bg-green-950">
-        <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">
-          Application Submitted!
-        </h3>
-        <p className="mt-2 text-green-700 dark:text-green-300">
-          You have successfully applied for <strong>{jobTitle}</strong>. We will be
-          in touch via email.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <form onSubmit={handleSubmit(onValid)} noValidate className="space-y-5">
-      {/* noValidate prevents the browser's built-in HTML5 validation UI from firing.
-          Without it, the browser would show its own error popups before Zod gets a
-          chance to run, resulting in duplicate or inconsistent error messages. */}
-      <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-        Apply for {jobTitle}
-      </h2>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <div>
+        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Apply for {jobTitle}</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Provide your professional background details below.</p>
+      </div>
 
-      {mutation.isError && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">
-            {mutation.error.message}
-          </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Full Name *</label>
+          <input {...register("fullName")} type="text" className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="John Doe" />
+          {errors.fullName && <p className="text-xs text-red-500 mt-1">{errors.fullName.message}</p>}
         </div>
-      )}
 
-      {/* Full Name */}
-      <div className="space-y-1">
-        <label htmlFor="fullName" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Full Name *
-        </label>
-        <input
-          id="fullName"
-          {...register("fullName")}
-          aria-invalid={!!errors.fullName}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.fullName
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.fullName && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.fullName.message}</p>
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Email Address *</label>
+          <input {...register("email")} type="email" className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="john@example.com" />
+          {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Phone Number</label>
+          <input {...register("phone")} type="tel" className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="+27 82 123 4567" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Years of Experience *</label>
+          <input {...register("yearsOfExperience", { valueAsNumber: true })} type="number" className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" />
+          {errors.yearsOfExperience && <p className="text-xs text-red-500 mt-1">{errors.yearsOfExperience.message}</p>}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">LinkedIn Profile URL</label>
+        <input {...register("linkedInUrl")} type="text" className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="https://linkedin.com/in/username" />
+      </div>
+
+      <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 grid gap-4 sm:grid-cols-2 items-center">
+        <div className="flex items-center gap-2">
+          <input {...register("availableImmediately")} type="checkbox" id="availableImmediately" className="h-4 w-4 rounded accent-blue-600" />
+          <label htmlFor="availableImmediately" className="text-sm font-medium text-gray-700 dark:text-gray-300">I am available to start immediately</label>
+        </div>
+
+        {!isAvailableImmediately && (
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Notice Period (Weeks) *</label>
+            <input {...register("noticePeriodWeeks", { valueAsNumber: true })} type="number" className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" />
+            {errors.noticePeriodWeeks && <p className="text-xs text-red-500 mt-1">{errors.noticePeriodWeeks.message}</p>}
+          </div>
         )}
       </div>
 
-      {/* Email */}
-      <div className="space-y-1">
-        <label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Email *
-        </label>
-        <input
-          id="email"
-          type="email"
-          {...register("email")}
-          aria-invalid={!!errors.email}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.email
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.email && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.email.message}</p>
-        )}
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">Cover Letter Statement *</label>
+        <textarea {...register("coverLetter")} rows={4} className="w-full rounded-lg border border-gray-300 p-2 text-sm dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100" placeholder="Explain why you are a great fit..." />
+        {errors.coverLetter && <p className="text-xs text-red-500 mt-1">{errors.coverLetter.message}</p>}
       </div>
 
-      {/* Phone */}
-      <div className="space-y-1">
-        <label htmlFor="phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Phone
-        </label>
-        <input
-          id="phone"
-          type="text"
-          {...register("phone")}
-          aria-invalid={!!errors.phone}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.phone
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.phone && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.phone.message}</p>
-        )}
+      <div className="flex justify-end">
+        <button disabled={mutation.isPending} type="submit" className="rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:bg-gray-400">
+          {mutation.isPending ? "Submitting Application..." : "Submit Application"}
+        </button>
       </div>
-
-      {/* Years of Experience */}
-      <div className="space-y-1">
-        <label htmlFor="yearsOfExperience" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Years of Experience *
-        </label>
-        <input
-          id="yearsOfExperience"
-          type="number"
-          {...register("yearsOfExperience", { valueAsNumber: true })}
-          aria-invalid={!!errors.yearsOfExperience}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.yearsOfExperience
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.yearsOfExperience && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.yearsOfExperience.message}</p>
-        )}
-      </div>
-
-      {/* Cover Letter */}
-      <div className="space-y-1">
-        <label htmlFor="coverLetter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Cover Letter *
-        </label>
-        <textarea
-          id="coverLetter"
-          rows={6}
-          {...register("coverLetter")}
-          aria-invalid={!!errors.coverLetter}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.coverLetter
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.coverLetter && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.coverLetter.message}</p>
-        )}
-      </div>
-
-      {/* LinkedIn URL */}
-      <div className="space-y-1">
-        <label htmlFor="linkedInUrl" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          LinkedIn URL
-        </label>
-        <input
-          id="linkedInUrl"
-          type="url"
-          {...register("linkedInUrl")}
-          aria-invalid={!!errors.linkedInUrl}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.linkedInUrl
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.linkedInUrl && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.linkedInUrl.message}</p>
-        )}
-      </div>
-
-      {/* Available Immediately */}
-      <div className="flex items-center gap-2">
-        <input
-          id="availableImmediately"
-          type="checkbox"
-          {...register("availableImmediately")}
-          className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
-        />
-        <label htmlFor="availableImmediately" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Available immediately
-        </label>
-      </div>
-
-      {/* Notice Period */}
-      <div className="space-y-1">
-        <label htmlFor="noticePeriodWeeks" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Notice Period (weeks) *
-        </label>
-        <input
-          id="noticePeriodWeeks"
-          type="number"
-          {...register("noticePeriodWeeks", { valueAsNumber: true })}
-          aria-invalid={!!errors.noticePeriodWeeks}
-          className={cn(
-            "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-            errors.noticePeriodWeeks
-              ? "border-red-500 dark:border-red-400"
-              : "border-gray-300 dark:border-gray-600"
-          )}
-        />
-        {errors.noticePeriodWeeks && (
-          <p className="text-xs text-red-600 dark:text-red-400">{errors.noticePeriodWeeks.message}</p>
-        )}
-      </div>
-
-      {/* Submit */}
-      <button
-        type="submit"
-        disabled={isBusy}
-        className={cn(
-          "w-full rounded-md px-4 py-2 text-sm font-semibold text-white transition-colors",
-          isBusy
-            ? "cursor-not-allowed bg-blue-300 dark:bg-blue-800"
-            : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-        )}
-      >
-        {isBusy ? "Submitting…" : "Submit Application"}
-      </button>
     </form>
   );
 }
+
+
+
+
+
 
 // "use client";
 
 // import { useForm } from "react-hook-form";
 // import { zodResolver } from "@hookform/resolvers/zod";
-// import { useMutation, useQueryClient } from "@tanstack/react-query";
-// import { z } from "zod";
-// import { cn } from "@/lib/utils";
-// import { submitApplication } from "@/lib/applicationsApi";
+// import * as z from "zod";
+// import { useMutation } from "@tanstack/react-query";
+// import { submitApplication } from "../lib/applicationsApi";
 
-// const applicationSchema = z
-//   .object({
-//     fullName: z.string().min(2, "Full name must be at least 2 characters").max(100),
-//     email: z.string().email("Please enter a valid email address"),
-//     phone: z
-//       .string()
-//       .regex(/^\+?[\d\s\-()\d]{8,15}$/, "Please enter a valid phone number")
-//       .or(z.literal(""))
-//       .optional()
-//       .transform((val) => (val === "" ? undefined : val)),
-//     yearsOfExperience: z
-//       .number()
-//       .int("Must be a whole number")
-//       .min(0, "Cannot be negative")
-//       .max(50, "Maximum 50 years"),
-//     coverLetter: z
-//       .string()
-//       .min(50, "Cover letter must be at least 50 characters — tell us why you're a strong fit")
-//       .max(2000, "Cover letter must be under 2000 characters"),
-//     linkedInUrl: z
-//       .string()
-//       .url("Please enter a valid URL")
-//       .refine((val) => val.includes("linkedin.com"), "URL must be a LinkedIn profile")
-//       .or(z.literal(""))
-//       .optional()
-//       .transform((val) => (val === "" ? undefined : val)),
-//     availableImmediately: z.boolean(),
-//     noticePeriodWeeks: z
-//       .number()
-//       .int("Must be a whole number")
-//       .min(0, "Cannot be negative"),
-//   })
-//   .refine(
-//     (data) => data.availableImmediately || data.noticePeriodWeeks > 0,
-//     {
-//       message: "Notice period must be at least 1 week if you are not available immediately",
-//       path: ["noticePeriodWeeks"],
-//     }
-//   );
+// // 1. Define clean base object schema using standard z.number() to eliminate compiler bugs
+// const baseApplicationSchema = z.object({
+//   fullName: z.string().min(2, "Full name must be at least 2 characters"),
+//   email: z.string().email("Invalid email address"),
+//   phone: z.string().optional().or(z.literal("")),
+//   yearsOfExperience: z.number({ invalid_type_error: "Experience must be a valid number" }).min(0, "Years of experience cannot be negative"),
+//   coverLetter: z.string().min(10, "Cover letter must be at least 10 characters long"),
+//   linkedInUrl: z.string().url("Invalid URL format").optional().or(z.literal("")),
+//   availableImmediately: z.boolean().default(true),
+//   noticePeriodWeeks: z.number({ invalid_type_error: "Notice period must be a valid number" }).min(0).default(0),
+// });
 
-// type ApplicationFormData = z.infer<typeof applicationSchema>;
+// // 2. Derive explicit types directly from the clean base shape
+// type ApplicationFormValues = z.infer<typeof baseApplicationSchema>;
+
+// // 3. Attach conditional logic refinements over the verified base schema
+// const applicationSchema = baseApplicationSchema.refine((data) => {
+//   if (!data.availableImmediately && (data.noticePeriodWeeks === undefined || data.noticePeriodWeeks <= 0)) {
+//     return false;
+//   }
+//   return true;
+// }, {
+//   message: "Please specify your notice period if you are not available immediately",
+//   path: ["noticePeriodWeeks"],
+// });
 
 // interface ApplicationFormProps {
 //   jobId: string;
 //   jobTitle: string;
+//   onSuccess: (newApplicantId: string) => void;
 // }
 
-// export default function ApplicationForm({ jobId, jobTitle }: ApplicationFormProps) {
-//   const queryClient = useQueryClient();
-
+// export default function ApplicationForm({ jobId, jobTitle, onSuccess }: ApplicationFormProps) {
 //   const {
 //     register,
 //     handleSubmit,
+//     watch,
 //     reset,
-//     formState: { errors, isSubmitting },
-//   } = useForm<ApplicationFormData>({
+//     formState: { errors },
+//   } = useForm<ApplicationFormValues>({
 //     resolver: zodResolver(applicationSchema),
 //     defaultValues: {
 //       fullName: "",
@@ -383,230 +206,175 @@ export default function ApplicationForm({ jobId, jobTitle }: ApplicationFormProp
 //     },
 //   });
 
+//   const isAvailableImmediately = watch("availableImmediately");
+
 //   const mutation = useMutation({
-//     mutationFn: submitApplication,
-//     onSuccess: () => {
-//       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+//     mutationFn: (values: ApplicationFormValues) => 
+//       submitApplication({ ...values, jobId }),
+//     onSuccess: (response) => {
 //       reset();
+//       if (response && response.applicantId) {
+//         onSuccess(response.applicantId);
+//       }
 //     },
 //   });
 
-//   const isBusy = isSubmitting || mutation.isPending;
-
-//   const onValid = async (data: ApplicationFormData) => {
-//     await mutation.mutateAsync({ ...data, jobId });
+//   const onSubmit = (data: ApplicationFormValues) => {
+//     mutation.mutate(data);
 //   };
 
-//   if (mutation.isSuccess) {
-//     return (
-//       <div className="rounded-lg border border-green-200 bg-green-50 p-6 dark:border-green-800 dark:bg-green-950">
-//         <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">
-//           Application Submitted!
+//   return (
+//     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+//       <div>
+//         <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+//           Apply for {jobTitle}
 //         </h3>
-//         <p className="mt-2 text-green-700 dark:text-green-300">
-//           You have successfully applied for <strong>{jobTitle}</strong>. We will be
-//           in touch via email.
+//         <p className="text-sm text-gray-500 dark:text-gray-400">
+//           Provide your professional background details below.
 //         </p>
 //       </div>
-//     );
-//   }
 
-//   return (
-//     <form onSubmit={handleSubmit(onValid)} noValidate className="space-y-5">
-//       {/* noValidate prevents the browser's built-in HTML5 validation UI from firing.
-//           Without it, the browser would show its own error popups before Zod gets a
-//           chance to run, resulting in duplicate or inconsistent error messages. */}
-//       <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-//         Apply for {jobTitle}
-//       </h2>
-
-//       {mutation.isError && (
-//         <div className="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-950">
-//           <p className="text-sm text-red-700 dark:text-red-300">
-//             {mutation.error.message}
-//           </p>
+//       <div className="grid gap-4 sm:grid-cols-2">
+//         {/* Full Name */}
+//         <div>
+//           <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//             Full Name *
+//           </label>
+//           <input
+//             {...register("fullName")}
+//             type="text"
+//             className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//             placeholder="John Doe"
+//           />
+//           {errors.fullName && (
+//             <p className="text-xs text-red-500 mt-1">{errors.fullName.message}</p>
+//           )}
 //         </div>
-//       )}
 
-//       {/* Full Name */}
-//       <div className="space-y-1">
-//         <label htmlFor="fullName" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Full Name *
-//         </label>
-//         <input
-//           id="fullName"
-//           {...register("fullName")}
-//           aria-invalid={!!errors.fullName}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.fullName
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
+//         {/* Email */}
+//         <div>
+//           <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//             Email Address *
+//           </label>
+//           <input
+//             {...register("email")}
+//             type="email"
+//             className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//             placeholder="john.doe@example.com"
+//           />
+//           {errors.email && (
+//             <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
 //           )}
-//         />
-//         {errors.fullName && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.fullName.message}</p>
-//         )}
+//         </div>
+
+//         {/* Phone */}
+//         <div>
+//           <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//             Phone Number
+//           </label>
+//           <input
+//             {...register("phone")}
+//             type="tel"
+//             className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//             placeholder="+27 82 123 4567"
+//           />
+//         </div>
+
+//         {/* Years of Experience */}
+//         <div>
+//           <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//             Years of Experience *
+//           </label>
+//           <input
+//             {...register("yearsOfExperience", { valueAsNumber: true })} // Safely casts strings straight to numbers
+//             type="number"
+//             className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//           />
+//           {errors.yearsOfExperience && (
+//             <p className="text-xs text-red-500 mt-1">{errors.yearsOfExperience.message}</p>
+//           )}
+//         </div>
 //       </div>
 
-//       {/* Email */}
-//       <div className="space-y-1">
-//         <label htmlFor="email" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Email *
+//       {/* LinkedIn URL */}
+//       <div>
+//         <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//           LinkedIn Profile URL
 //         </label>
 //         <input
-//           id="email"
-//           type="email"
-//           {...register("email")}
-//           aria-invalid={!!errors.email}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.email
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
-//           )}
-//         />
-//         {errors.email && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.email.message}</p>
-//         )}
-//       </div>
-
-//       {/* Phone */}
-//       <div className="space-y-1">
-//         <label htmlFor="phone" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Phone
-//         </label>
-//         <input
-//           id="phone"
+//           {...register("linkedInUrl")}
 //           type="text"
-//           {...register("phone")}
-//           aria-invalid={!!errors.phone}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.phone
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
-//           )}
+//           className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//           placeholder="https://linkedin.com/in/username"
 //         />
-//         {errors.phone && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.phone.message}</p>
+//         {errors.linkedInUrl && (
+//           <p className="text-xs text-red-500 mt-1">{errors.linkedInUrl.message}</p>
 //         )}
 //       </div>
 
-//       {/* Years of Experience */}
-//       <div className="space-y-1">
-//         <label htmlFor="yearsOfExperience" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Years of Experience *
-//         </label>
-//         <input
-//           id="yearsOfExperience"
-//           type="number"
-//           {...register("yearsOfExperience", { valueAsNumber: true })}
-//           aria-invalid={!!errors.yearsOfExperience}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.yearsOfExperience
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
-//           )}
-//         />
-//         {errors.yearsOfExperience && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.yearsOfExperience.message}</p>
+//       {/* Availability Metrics */}
+//       <div className="rounded-lg bg-gray-50 p-4 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 grid gap-4 sm:grid-cols-2 items-center">
+//         <div className="flex items-center gap-2">
+//           <input
+//             {...register("availableImmediately")}
+//             type="checkbox"
+//             id="availableImmediately"
+//             className="h-4 w-4 rounded border-gray-300 accent-blue-600 dark:bg-gray-800 dark:border-gray-700"
+//           />
+//           <label htmlFor="availableImmediately" className="text-sm font-medium text-gray-700 dark:text-gray-300">
+//             I am available to start immediately
+//           </label>
+//         </div>
+
+//         {!isAvailableImmediately && (
+//           <div>
+//             <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//               Notice Period (Weeks) *
+//             </label>
+//             <input
+//               {...register("noticePeriodWeeks", { valueAsNumber: true })} // Safely casts strings straight to numbers
+//               type="number"
+//               className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//             />
+//             {errors.noticePeriodWeeks && (
+//               <p className="text-xs text-red-500 mt-1">{errors.noticePeriodWeeks.message}</p>
+//             )}
+//           </div>
 //         )}
 //       </div>
 
 //       {/* Cover Letter */}
-//       <div className="space-y-1">
-//         <label htmlFor="coverLetter" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Cover Letter *
+//       <div>
+//         <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+//           Cover Letter 
 //         </label>
 //         <textarea
-//           id="coverLetter"
-//           rows={6}
 //           {...register("coverLetter")}
-//           aria-invalid={!!errors.coverLetter}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.coverLetter
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
-//           )}
+//           rows={4}
+//           className="w-full rounded-lg border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none dark:bg-gray-800 dark:border-gray-700 dark:text-gray-100"
+//           placeholder="Explain why you are a great fit for this position..."
 //         />
 //         {errors.coverLetter && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.coverLetter.message}</p>
+//           <p className="text-xs text-red-500 mt-1">{errors.coverLetter.message}</p>
 //         )}
 //       </div>
 
-//       {/* LinkedIn URL */}
-//       <div className="space-y-1">
-//         <label htmlFor="linkedInUrl" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           LinkedIn URL
-//         </label>
-//         <input
-//           id="linkedInUrl"
-//           type="url"
-//           {...register("linkedInUrl")}
-//           aria-invalid={!!errors.linkedInUrl}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.linkedInUrl
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
-//           )}
-//         />
-//         {errors.linkedInUrl && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.linkedInUrl.message}</p>
-//         )}
+//       {/* Submit Button */}
+//       <div className="flex justify-end">
+//         <button
+//           disabled={mutation.isPending}
+//           type="submit"
+//           className="inline-flex justify-center rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 focus:outline-none disabled:bg-gray-400 dark:bg-blue-700 dark:hover:bg-blue-600 tracking-tight"
+//         >
+//           {mutation.isPending ? "Submitting Application..." : "Submit Application"}
+//         </button>
 //       </div>
 
-//       {/* Available Immediately */}
-//       <div className="flex items-center gap-2">
-//         <input
-//           id="availableImmediately"
-//           type="checkbox"
-//           {...register("availableImmediately")}
-//           className="h-4 w-4 rounded border-gray-300 dark:border-gray-600"
-//         />
-//         <label htmlFor="availableImmediately" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Available immediately
-//         </label>
-//       </div>
-
-//       {/* Notice Period */}
-//       <div className="space-y-1">
-//         <label htmlFor="noticePeriodWeeks" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-//           Notice Period (weeks) *
-//         </label>
-//         <input
-//           id="noticePeriodWeeks"
-//           type="number"
-//           {...register("noticePeriodWeeks", { valueAsNumber: true })}
-//           aria-invalid={!!errors.noticePeriodWeeks}
-//           className={cn(
-//             "w-full rounded-md border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:text-gray-100",
-//             errors.noticePeriodWeeks
-//               ? "border-red-500 dark:border-red-400"
-//               : "border-gray-300 dark:border-gray-600"
-//           )}
-//         />
-//         {errors.noticePeriodWeeks && (
-//           <p className="text-xs text-red-600 dark:text-red-400">{errors.noticePeriodWeeks.message}</p>
-//         )}
-//       </div>
-
-//       {/* Submit */}
-//       <button
-//         type="submit"
-//         disabled={isBusy}
-//         className={cn(
-//           "w-full rounded-md px-4 py-2 text-sm font-semibold text-white transition-colors",
-//           isBusy
-//             ? "cursor-not-allowed bg-blue-300 dark:bg-blue-800"
-//             : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-//         )}
-//       >
-//         {isBusy ? "Submitting…" : "Submit Application"}
-//       </button>
+//       {mutation.isError && (
+//         <p className="text-xs text-red-500 text-center bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 p-2 rounded-lg">
+//           Error: {mutation.error instanceof Error ? mutation.error.message : "Submission failed"}
+//         </p>
+//       )}
 //     </form>
 //   );
 // }

@@ -6,7 +6,7 @@ const JOBS: JobListing[] = [
   {
     id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     title: "Senior Frontend Software Engineer",
-    company: "Takealot",
+    companyName: "Takealot",
     location: "Cape Town",
     employmentType: "FullTime",
     salaryMin: 30000,
@@ -18,7 +18,7 @@ const JOBS: JobListing[] = [
   {
     id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     title: "Junior Systems Developer",
-    company: "Vodacom",
+    companyName: "Vodacom",
     location: "Johannesburg, Sandton",
     employmentType: "FullTime",
     salaryMin: 15000,
@@ -30,7 +30,7 @@ const JOBS: JobListing[] = [
   {
     id: "c3d4e5f6-a7b8-9012-cdef-123456789012",
     title: "UX/Web Designer",
-    company: "Discovery",
+    companyName: "Discovery",
     location: "Sandton",
     employmentType: "Contract",
     salaryMin: 10000,
@@ -42,7 +42,7 @@ const JOBS: JobListing[] = [
   {
     id: "d4e5f6a7-b8c9-0123-defa-234567890123",
     title: "Data Analyst Intern",
-    company: "Standard Bank",
+    companyName: "Standard Bank",
     location: "Pretoria/Hybrid",
     employmentType: "Internship",
     salaryMin: 15000,
@@ -54,7 +54,7 @@ const JOBS: JobListing[] = [
   {
     id: "e5f6a7b8-c9d0-1234-efab-345678901234",
     title: "Senior DevOps Engineer",
-    company: "FNB FirstRand",
+    companyName: "FNB FirstRand",
     location: "Bloemfontein",
     employmentType: "FullTime",
     salaryMin: 70000,
@@ -66,7 +66,7 @@ const JOBS: JobListing[] = [
   {
     id: "f6a7b8c9-d0e1-2345-fabc-456789012345",
     title: "Part-Time Content Writer/Promoter",
-    company: "Media24",
+    companyName: "Media24",
     location: "Remote",
     employmentType: "PartTime",
     salaryMin: 12000,
