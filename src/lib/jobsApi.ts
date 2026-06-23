@@ -47,7 +47,7 @@ function parseSalary(salaryStr: string): { min: number; max: number } {
 export async function fetchJobs(): Promise<JobListing[]> {
   if (!BASE_URL) throw new Error("Missing NEXT_PUBLIC_API_URL");
 
-  const response = await fetch(`${BASE_URL}/api/v1/jobs`);
+  const response = await fetch(`${BASE_URL}/api/v1/jobs/all`);
   if (!response.ok) throw new Error(`API Error: ${response.status}`);
 
   const result: PagedResponse = await response.json();
@@ -71,7 +71,7 @@ export async function fetchJobs(): Promise<JobListing[]> {
 }
 
 export async function createJob(data: CreateJobRequest): Promise<JobListing> {
-  const response = await fetch(`${BASE_URL}/api/v1/jobs`, {
+  const response = await fetch(`${BASE_URL}/api/v1/jobs/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -14,11 +14,18 @@ const jobSchema = z.object({
   description: z.string().min(20, "Description must be at least 20 characters"),
   employmentType: z.enum(["FullTime", "PartTime", "Contract", "Internship"]),
   closingDate: z.string().refine(
-    (val) => new Date(val) > new Date(),
+    (val) => !val || new Date(val) > new Date(),
     "Closing date must be in the future"
   ),
-  salaryMin: z.coerce.number().min(0).optional(),
-  salaryMax: z.coerce.number().min(0).optional(),
+  // Preprocess inputs to map empty text entries ("") onto undefined before evaluating values
+  salaryMin: z.preprocess(
+    (val) => (val === "" ? undefined : val),
+    z.coerce.number().min(0).optional()
+  ),
+  salaryMax: z.preprocess(
+    (val) => (val === "" ? undefined : val),
+    z.coerce.number().min(0).optional()
+  ),
 }).refine(
   (data) => !data.salaryMin || !data.salaryMax || data.salaryMax > data.salaryMin,
   { message: "Max salary must be greater than min salary", path: ["salaryMax"] }
@@ -39,7 +46,7 @@ export default function JobForm({ onSuccess }: JobFormProps) {
     reset,
     formState: { errors, isSubmitting },
   } = useForm<JobFormData>({
-    resolver: zodResolver(jobSchema),
+    resolver: zodResolver(jobSchema) as any,
     defaultValues: {
       title: "",
       companyName: "",
@@ -48,8 +55,6 @@ export default function JobForm({ onSuccess }: JobFormProps) {
       description: "",
       employmentType: "FullTime",
       closingDate: "",
-      salaryMin: undefined,
-      salaryMax: undefined,
     },
   });
 
@@ -63,8 +68,10 @@ export default function JobForm({ onSuccess }: JobFormProps) {
         description: values.description,
         employmentType: values.employmentType,
         closingDate: new Date(values.closingDate).toISOString(),
-        salaryMin: values.salaryMin,
-        salaryMax: values.salaryMax,
+        // Use undefined (not null) to match the CreateJobRequest type which declares these
+        // fields as `number | undefined`. null is not assignable to that union.
+        salaryMin: values.salaryMin ?? undefined,
+        salaryMax: values.salaryMax ?? undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });

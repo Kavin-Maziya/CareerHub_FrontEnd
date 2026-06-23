@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchJobs } from "../lib/jobsApi";
 import { fetchApplicationsByApplicant } from "../lib/applicationsApi";
@@ -11,16 +11,17 @@ import JobForm from "../components/JobForm";
 import JobListSkeleton from "../components/JobCardSkeleton";
 import ApplicationSkeleton from "../components/ApplicationSkeleton";
 
-export default function Home() {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [applicantId, setApplicantId] = useState<string | null>(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("careerhub:applicantId");
-    }
-    return null;
-  });
-  const [showJobForm, setShowJobForm] = useState(false);
+// Session Storage Key for preserving the selected job across soft session reloads
+const SESSION_STORAGE_KEY = "careerhub:selectedRoomId";
 
+export default function Home() {
+  // STATE MANAGEMENT
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showJobForm, setShowJobForm] = useState(false);
+  
+  const [applicantId, setApplicantId] = useState<string | null>(null);
+
+  // Query initializer
   const {
     data: jobs,
     isPending: jobsPending,
@@ -32,23 +33,77 @@ export default function Home() {
     queryFn: fetchJobs,
   });
 
+  // API TRACKING
+  // Query custom backend for applicant data once the ID is fetched from storage
   const { data: myApplications, isPending: applicationsPending } = useQuery({
     queryKey: ["myApplications", applicantId],
     queryFn: () => fetchApplicationsByApplicant(applicantId!),
     enabled: !!applicantId,
   });
 
+  // STORAGE USE EFFECTS
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // Hydrate custom API identifier on mount safely in the browser context
+      setApplicantId(localStorage.getItem("careerhub:applicantId"));
+      
+      // Restores selection state without running an array-validation guard
+      const stored = sessionStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored !== null) {
+        setSelectedId(stored);
+      }
+    }
+  }, []);
+
+  // Update session storage whenever selection changes
+  useEffect(() => {
+    if (selectedId !== null) {
+      sessionStorage.setItem(SESSION_STORAGE_KEY, selectedId);
+    } else {
+      sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, [selectedId]);
+
+  // Compute currently highlighted job entity based on React Query payload
   const selectedJob = jobs?.find((j) => j.id === selectedId) ?? null;
 
+  // Syncs incoming form submissions with local storage targets to satisfy custom API routes
   function handleApplicationSuccess(newApplicantId: string) {
     localStorage.setItem("careerhub:applicantId", newApplicantId);
     setApplicantId(newApplicantId);
   }
 
+  // PENDING STATE
+  // Renders JobListSkeleton when data fetch is pending
+  if (jobsPending) {
+    return <JobListSkeleton />;
+  }
+
+  // ERROR STATE
+  if (jobsError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-50 p-6 dark:bg-gray-950">
+        <div className="w-full max-w-md rounded-xl border border-red-200 bg-red-50 p-6 text-center shadow-sm dark:border-red-900/50 dark:bg-red-950/20">
+          <p className="text-sm font-medium text-red-700 dark:text-red-400">
+            {jobsErr instanceof Error ? jobsErr.message : "An unknown network error occurred."}
+          </p>
+          <button
+            onClick={() => refetchJobs()}
+            className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // SUCCESS STATE
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-10 dark:bg-gray-950 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl space-y-10">
 
+        {/* Portal Header Controls */}
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50">
             CareerHub Portal
@@ -61,39 +116,25 @@ export default function Home() {
           </button>
         </div>
 
+        {/* Create Job Form View toggled dynamically */}
         {showJobForm && (
           <div className="rounded-2xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:border-gray-800">
             <JobForm onSuccess={() => setShowJobForm(false)} />
           </div>
         )}
 
-        {/* Job Listings — skeleton while pending, error panel on failure */}
+        {/* JobList UI guarded against undefined data payloads */}
         <div>
-          {jobsPending ? (
-            <JobListSkeleton />
-          ) : jobsError ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-900/50 dark:bg-red-950/20">
-              <p className="text-sm text-red-700 dark:text-red-400">
-                {jobsErr instanceof Error ? jobsErr.message : "Failed to load jobs."}
-              </p>
-              <button
-                onClick={() => refetchJobs()}
-                className="mt-4 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
-              >
-                Try again
-              </button>
-            </div>
-          ) : (
-            jobs && (
-              <JobList
-                jobs={jobs}
-                selectedId={selectedId}
-                onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
-              />
-            )
+          {jobs && (
+            <JobList
+              jobs={jobs}
+              selectedId={selectedId}
+              onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
+            />
           )}
         </div>
 
+        {/* Application Input Form Container */}
         {selectedJob && (
           <div className="rounded-2xl border bg-white p-6 shadow-sm dark:bg-gray-900 dark:border-gray-800">
             <ApplicationForm
@@ -104,7 +145,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* My Applications — skeleton while pending */}
+        {/* Application Panel */}
         <div className="border-t pt-10 border-gray-200 dark:border-gray-800">
           <h3 className="text-xl font-bold text-gray-900 dark:text-gray-50">My Submitted Applications</h3>
           {applicantId ? (
@@ -124,7 +165,6 @@ export default function Home() {
     </main>
   );
 }
-
 
 
 // "use client";
