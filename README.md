@@ -1,6 +1,122 @@
 # CareerHub Frontend
 
 
+## Assignment 1.4: Applications & Mutations
+
+### Part 1 — Written Decisions
+
+#### 1. Why `@hookform/resolvers` is a separate package
+
+React Hook Form (RHF) and Zod are independently maintained libraries with separate release cycles. If RHF bundled Zod support directly, every Zod breaking change would require a coordinated RHF release, and vice versa. `@hookform/resolvers` is a thin adapter layer that absorbs that coupling — neither library needs to know the other exists.
+
+At runtime, `zodResolver(schema)` returns a resolver function with this signature:
+
+```ts
+(values: FieldValues, context: unknown, options: ResolverOptions) => Promise<ResolverResult>
+```
+
+RHF calls that function with the raw form values on every validation trigger. Inside, the resolver calls `schema.safeParse(values)`. If parsing succeeds it returns `{ values: parsedData, errors: {} }`. If it fails it maps Zod's error array into RHF's expected shape: `{ values: {}, errors: { fieldName: { message, type } } }`, which RHF then uses to populate the `errors` object returned by `useForm`.
+
+#### 2. The number input problem
+
+**Solution A** (`valueAsNumber: true`) — RHF reads the DOM input's `.valueAsNumber` property instead of `.value`. The coercion from string to number happens at the RHF layer, before the value ever reaches Zod. The schema can use `z.number()` because by the time Zod sees the value, it is already a number.
+
+**Solution B** (`z.coerce.number()`) — the raw string from the input reaches Zod unchanged. Zod calls `Number()` on it internally before applying validators. The coercion happens inside the schema itself.
+
+Both solutions produce an identical `z.infer<typeof schema>` type of `number` because Zod's type inference reflects the *output* type after all transformations, not the input type. From TypeScript's perspective, after `safeParse` succeeds you always get `number` either way.
+
+This assignment uses **Solution A** (`valueAsNumber: true`). It keeps the schema honest — `z.number()` in the schema means "I expect a number", and RHF ensures that is exactly what Zod receives. `z.coerce.number()` silently accepts strings in the schema, which could mask type mismatches elsewhere in the codebase.
+
+#### 3. `mutate` vs `mutateAsync` — the `isSubmitting` timing bug
+
+`handleSubmit` wraps the `onValid` function and `await`s the promise it returns. `isSubmitting` stays `true` for the entire duration of that `await`, then drops to `false` when the promise settles.
+
+`mutation.mutate(data)` returns `void`. It fires the request internally but gives `handleSubmit` nothing to await. So `handleSubmit`'s promise resolves immediately after `mutate` is called, `isSubmitting` drops to `false`, and the submit button re-enables — all while the network request is still in flight. This is the bug.
+
+`mutation.mutateAsync(data)` returns a `Promise` that resolves or rejects when the network request settles. When you `await mutateAsync(data)` inside `onValid`, `handleSubmit` receives a real promise, keeps `isSubmitting` true until the request completes, and the button stays disabled for the full duration of the request.
+
+#### 4. `onSuccess` placement
+
+**Concrete scenario where they differ:** if the component unmounts before the mutation settles — for example, the user navigates away mid-flight — Option B's per-call `onSuccess` will not fire because the component is gone. Option A's `useMutation`-level `onSuccess` fires regardless of component mount state because it is bound to the mutation, not the component instance.
+
+This assignment uses **Option A** (in the `useMutation` options object) for both `queryClient.invalidateQueries` and `reset()`. The reason: cache invalidation is a global side effect that should always run after a successful submission, regardless of which call site triggered it or whether the component is still mounted. Placing it in Option B means it only runs for that specific `mutate` call — fragile if a second call site is ever added.
+
+---
+
+### Schema design decisions
+
+`z.string().optional()` alone does not produce the correct behaviour when an HTML input submits an empty string. An HTML `<input>` always submits a string value — when left blank it sends `""`, not `undefined`. Zod's `.optional()` allows `undefined` but not `""`, so a blank field still runs the `.regex()` validator and produces a validation failure even though the user left the field empty intentionally.
+
+The pattern used for `phone` and `linkedInUrl` is:
+
+```ts
+z.string().regex(...).or(z.literal("")).optional().transform((val) => (val === "" ? undefined : val))
+```
+
+This works in three steps. `.or(z.literal(""))` widens the accepted input to include the empty string alongside a valid value, so a blank field passes validation. `.optional()` additionally allows `undefined` for cases where the field is never touched. `.transform(val => val === "" ? undefined : val)` collapses `""` into `undefined` on the output side, ensuring the empty string never leaks into the submitted data. The final inferred output type is `string | undefined` — there is no `""` in the type.
+
+---
+
+### The cross-field refine
+
+`.refine()` receives the entire parsed object as its first argument — after all field-level validators have already passed. This gives it access to the values of multiple fields simultaneously, which is what makes cross-field constraints possible.
+
+The `path` option is required because without it, the error produced by `.refine()` lands on the root of the form object rather than on a specific field. `errors.noticePeriodWeeks` would remain `undefined` and nothing would render next to the field in the UI. Setting `path: ["noticePeriodWeeks"]` tells RHF exactly which field's error slot to populate.
+
+A field-level `.min(1)` on `noticePeriodWeeks` alone cannot express the same constraint because it has no access to `availableImmediately`. It would reject `0` unconditionally — including when the user is available immediately and a notice period of `0` is perfectly valid. The constraint is not "notice period must be greater than zero always" — it is "notice period must be greater than zero *only when the user is not immediately available*". That conditionality requires reading two fields at once, which only `.refine()` on the object can do.
+
+---
+
+### The two loading flags
+
+`isBusy` combines `isSubmitting` (from RHF) and `mutation.isPending` (from TanStack Query) because they cover different parts of the request lifecycle and there is a brief window where they diverge.
+
+Exact timeline from button click to API response:
+
+1. User clicks Submit → `handleSubmit` begins → `isSubmitting: true`, `mutation.isPending: false`
+2. `onValid` runs → `await mutateAsync(data)` is called → `mutation.isPending: true`. Both flags are now `true` and `isBusy` is `true`.
+3. The 800ms delay elapses and the API responds → `mutateAsync` resolves → `isSubmitting` drops to `false`, then `mutation.isPending` drops to `false`. `isBusy` becomes `false`.
+
+The window where they differ is step 1: between the moment `handleSubmit` starts and the moment `mutateAsync` is called, `isSubmitting` is `true` but `mutation.isPending` is still `false`. Without `isSubmitting` in `isBusy`, the button would be briefly re-enabled at that point.
+
+With `mutateAsync` used correctly, `mutation.isPending` cannot outlast `isSubmitting`. Both flags settle when the awaited promise resolves. If `mutate` (void-returning) were used instead, `isSubmitting` would drop immediately after `mutate` is called while `mutation.isPending` would stay `true` until the network call finishes — that is precisely the timing bug the assignment describes.
+
+---
+
+### Build output
+
+```
+npm run build
+```
+
+```text
+> careerhub-frontend@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 73s
+✓ Finished TypeScript in 91s    
+✓ Collecting page data using 1 worker in 5.1s    
+✓ Generating static pages using 1 worker (6/6) in 4.7s
+✓ Finalizing page optimization in 190ms    
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/applications
+└ ƒ /api/jobs
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+```
+
+
 # Assignment 1.3: CareerHub Frontend Documentation
 
 ## Part 1 — Written Decisions
