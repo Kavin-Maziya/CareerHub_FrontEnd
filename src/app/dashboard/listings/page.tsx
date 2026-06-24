@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic"; // Forces raw backend reads on every loa
 async function getDashboardJobs(): Promise<JobListing[]> {
   const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
   const response = await fetch(`${backendBaseUrl}/api/v1/jobs/all?page=1&pageSize=100`, {
-    cache: "no-store",
+next: { tags: ["jobs"] },
   });
 
   if (!response.ok) {

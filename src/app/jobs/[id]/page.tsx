@@ -17,8 +17,8 @@ async function getSingleJob(id: string): Promise<JobListing | null> {
 
   try {
     const response = await fetch(`${backendBaseUrl}/api/v1/jobs/${id}`, {
-      cache: "no-store", // Bypasses the Next.js server data cache for up-to-date reads
-    });
+next: { tags: ["jobs"] },  
+  });
 
     if (response.status === 404) return null;
     if (!response.ok)

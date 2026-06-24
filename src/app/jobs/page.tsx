@@ -32,7 +32,7 @@ async function getJobs(): Promise<JobListing[]> {
   const response = await fetch(
     `${backendBaseUrl}/api/v1/jobs/all?page=1&pageSize=100`,
     {
-      cache: "no-store",
+      next: { tags: ["jobs"] },
     },
   );
 
