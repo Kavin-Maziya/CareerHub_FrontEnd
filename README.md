@@ -35,6 +35,31 @@ const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/jobs/count`
   next: { revalidate: 0 }
 });
 ```
+
+## README Updates
+
+### 1. Architectural Composition Pattern in `/jobs/[id]`
+The single job view implements a hybrid composition pattern by nesting an interactive Client Component (`<ApplicationForm />`) directly inside a Server Component page structure. 
+- **Execution Sequence:** When a user requests a specific job page, the Next.js framework executes the `page.tsx` Server Component entirely on the server environment. The server resolves data dependencies, parses the layout, and evaluates the static HTML frame. During this phase, `<ApplicationForm />` is not skipped; the server renders a non-interactive, dry HTML snapshot of the form structure to minimize Visual Stability layout shifts. The resulting payload—comprising raw HTML alongside a lightweight JSON manifest detailing client-side initialization parameters—is streamed to the browser. Once this payload lands in the viewport, the client bundle triggers a hydration process, executing the Client Component code in the browser to bind event listeners, attach state primitives, and make the application input fully reactive.
+- **JavaScript Disabled Fallback:** If a user completely disables JavaScript in their browser, they will successfully see the complete layout, the specific job details, and the visual layout of the application form structure. They see this because the Server Component successfully compiled the structural HTML shell and streamed it across the network ahead of any client-side processing. However, the user cannot interact with or submit the form; without the client runtime, the hydration step never triggers, meaning the component's internal submission handlers and reactive UI updates cannot execute.
+
+### 2. Client-Server Boundaries and Link Component Mechanics
+- **Why `JobLinkCard` Remains a Server Component:** The `JobLinkCard` operates cleanly as a Server Component because Next.js treats components imported from the framework library (`next/link`) as pre-compiled client boundaries. The presence of client hooks like `useRouter` deep inside the foundational `<Link>` implementation does not bleed backward or force the parent file to inherit a `"use client"` directive. The server treats the child component simply as an opaque entry marker in the component tree, emitting serialization instructions for the browser to hydrate later. The boundary is drawn *at the invocation point* of `<Link>`, keeping `JobLinkCard` squarely on the server side where it can map layout parameters with zero runtime overhead.
+- **Why `JobCard` Requires a Client Component Directive:** Conversely, the original `JobCard` implementation *must* retain its explicit `"use client"` directive due to its reliance on immediate, interactive client-side primitives. It manages dynamic UI tracking states (such as active dropdown toggles, modal open flags, or selection highlights) and relies on browser context event handlers (`onClick`, `onChange`) to change layout layouts on the fly. Because these runtime states alter the DOM directly within the user environment based on immediate input, they cross the client boundary, preventing the component from being compiled as a pure server element.
+
+### 3. Server-Driven `loading.tsx` vs. Manual Client-Side Loading States
+The architectural shift from client-managed state evaluation (`if (isPending) return <Skeleton />`) to server-managed files alters how loading metrics are delivered to a client browser.
+
+- **Client-Side `useQuery` Lifecycle:** In a traditional Client Component driven by TanStack Query, the entire component bundle must first download, parse, and execute in the browser. The component mounts and immediately runs its first initialization pass, rendering the fallback skeleton because `isPending` evaluates to `true`. Once the asynchronous background network request finishes, the local hook updates internal state flags and forces a secondary client re-render to paint the resolved data arrays.
+
+- **Server-Driven `loading.tsx` Lifecycle:** The `loading.tsx` file operates on a completely different framework level by leveraging declarative native React `Suspense` boundaries at the routing layout layer. During the project build or generation phase, Next.js automatically wraps the page component inside an implicit `<Suspense fallback={<Loading />} >` node. When a user changes routes, the framework instantly streams the static HTML fallback compiled from `loading.tsx` across the network connection. This gives the user an instantaneous visual feedback loop while the server finishes resolving asynchronous database operations or external API calls in the background. Once the server data resolves completely, Next.js streams the final HTML data fragments down the same HTTP pipe, seamlessly swapping the Suspense fallback with the completed page without requiring a full layout flash or client-side layout calculation.
+
+### 4. Gate
+- The build process completed successfully with zero TypeScript compilation errors and zero ESLint rule violations.
+```text
+
+```
+
 ---
 
 ## Assignment 1.4: Applications & Mutations
