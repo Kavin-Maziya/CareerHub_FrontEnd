@@ -1,6 +1,6 @@
 import type { ApplicationRequest, ApplicationResponse } from "../types/ApplicationRequest";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export async function submitApplication(data: ApplicationRequest & { jobId: string }): Promise<ApplicationResponse> {
   const payload = {

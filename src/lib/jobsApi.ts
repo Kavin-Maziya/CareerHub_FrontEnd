@@ -1,6 +1,6 @@
 import { JobListing, EmploymentType } from "../types/JobListing";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 interface BackendJob {
   id: string;
