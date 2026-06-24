@@ -5,6 +5,7 @@ export interface JobListing {
   title: string;
   companyName: string;
   location: string;
+  description: string;
   employmentType: EmploymentType;
   salaryMin: number;
   salaryMax: number;
