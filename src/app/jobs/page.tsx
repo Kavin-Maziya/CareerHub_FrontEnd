@@ -1,4 +1,4 @@
-import JobCreateSection from "@/src/components/JobCreateSection";
+import Link from "next/link";
 import JobLinkCard from "../../components/JobLinkCard";
 import { EmploymentType, JobListing } from "../../types/JobListing";
 
@@ -62,13 +62,18 @@ export default async function JobsPage() {
 
   return (
     <main className="container mx-auto px-4 py-8">
-      {/* Controlled Create Job Section */}
-      <JobCreateSection />
 
       {/* Job Listings */}
       <section>
         <h1 className="mb-6 text-3xl font-bold">All Job Listings</h1>
 
+        {/* Create Job Listing link */}
+        <Link
+          href="/jobs/create"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
+        >
+          Post Job
+        </Link>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {jobs.map((job) => (
             <JobLinkCard key={job.id} job={job} />

@@ -1,5 +1,94 @@
 # CareerHub Frontend
 
+# Assignment 2.2: CareerHub Advanced Data Fetching
+
+---
+
+## Part 1 — Written Decisions
+
+### 1. Choosing a Cache Strategy Per Data Source
+- **Jobs List & Single Job Detail:** * **Strategy:** On-demand cache invalidation using `next: { tags: ["jobs"] }`.
+    - **Justification:** Job data changes infrequently—only when an employer explicitly publishes, modifies, or closes a listing. Serving this data from the Next.js server cache dramatically reduces direct backend database/API overhead. Using the exact same `"jobs"` tag across separate files (`/jobs/page.tsx` and `/dashboard/listings/page.tsx`) is a deliberate and correct design. It ensures that a single invalidation command clears all representations of that data across different routes instantly, avoiding data fragmentation.
+- **Application Statistics:** * **Strategy:** Dynamic server fetching using `cache: "no-store"`.
+    - **Justification:** Application statistics change dynamically and continuously as candidates submit applications across the platform at any given moment. Because there is no single employer-driven or deterministic lifecycle hook to cleanly trigger invalidation, always-fresh fetching ensures real-time accuracy for employers analyzing active applicant pipelines.
+
+### 2. Why revalidateTag Works Across Routes
+- The Next.js data cache layer lives completely on the **Next.js server memory/filesystem tier** (and can map across a distributed infrastructure cluster if hosted on Vercel or similar CDNs), rather than inside the client's individual browser. 
+
+- Because this cache tag registry is centrally managed by the server runtime, a tag declared within a fetch header on *Route A* is mapped into a global memory cache matrix. When a Server Action executing on *Route B* calls `revalidateTag("jobs")`, the runtime purges all compiled responses matching that tag string from the server cache. 
+
+- On the very first request to `/jobs` following this revalidation, the server finds a cache miss. Instead of returning stale data, the server invokes a fresh network query directly to the mock API, caches the brand-new response with the `"jobs"` tag, and compiles the fresh HTML payload to return down to the candidate's browser.
+
+### 3. What Promise.all Failure Means for Your Page
+
+- **Current Behavior on Error:** Because `Promise.all` operates as an all-or-nothing bucket, if the statistics endpoint throws a 500 internal server error, the entire promise rejects. The dashboard page encounters an unhandled runtime exception and crashes, triggering the global `error.tsx` boundary and completely hiding the working jobs list table from the employer.
+- **Alternative Approach A (Promise.allSettled):** We can swap to `Promise.allSettled()`. This resolves an array of outcome objects reflecting whether each promise succeeded or failed. The page can check if the stats result failed, substitute a graceful fallback metric (e.g., `"Unavailable"` or `0`), and still render the structural jobs table smoothly.
+- **Alternative Approach B (Granular Suspense Separation):** We can strip data fetching out of the parent page entirely and embed independent fetching routines straight inside self-contained components (`ApplicationsSummary` and `ListingsTable`) wrapped in `<Suspense>` wrappers. 
+- **Production Dashboard Selection:** **Approach B** is ideal for a production employer dashboard. Isolating your sub-components ensures that a backend microservice failure in metrics generation does not compromise the core operational capacity of the employer's listings interface.
+
+### 4. The Two-Boundary vs One-Boundary Trade-off
+- **T=0ms:** The server instantly flushes the static shell template down the wire. The employer immediately sees the static text headers, structural page layout elements, and both placeholder animated pulse loading states (`ApplicationsSummarySkeleton` and `ListingsTableSkeleton`).
+- **T=120ms:** The fast application statistics request completes. The `ApplicationsSummary` component resolves and replaces its loading skeleton instantly with the global metric card, allowing the employer to see application numbers while the rest loads.
+- **T=450ms:** The data-heavy table queries finish. The `ListingsTable` replaces its skeleton row placeholders with live, interactive rows.
+- **T=451ms:** The entire progressive rendering cycle concludes.
+- **Single Boundary Scenario:** If both components were wrapped inside a single collective `<Suspense>` boundary, Next.js would hold rendering to the speed of the **slowest internal query**. At `T=120ms`, despite the application metrics being fully calculated and ready to stream, the user would see nothing but skeletons across the page until the table resolved at `T=450ms`.
+
+---
+
+## Final Section
+
+### 1. Tracing the Close Action End to End
+
+The sequence below details the full interaction loop from client to server and back:
+1.  **User Trigger (Browser):** The employer clicks the action submit button managed by the client-side component `CloseJobButton`.
+2.  **Form Hook Lifecycle (Browser):** The component uses React's `useActionState` hook. Upon submission, `isPending` switches to `true`, updating the button text to "Closing…" and disabling the UI element to block repeated submissions.
+3.  **Server Action Execution (Server):** The browser bundles the form parameters and executes `closeJobListing` securely on the server via an encrypted POST request over the network.
+4.  **Data Mutation (Server):** `closeJobListing` performs payload safety checks on the parsed `jobId`. It then sends a structured `PATCH` network query to the backend endpoint at `/api/jobs/[id]` specifying `status: "Closed"`.
+5.  **Tag Invalidation (Server):** Once the backend route responds with `200 OK`, the Server Action fires `revalidateTag("jobs")`. Next.js immediately flags the central server-side cache for both candidate-facing list views and employer dashboard tables as stale.
+6.  **State Synchronization (Browser):** The action completes and hands back a structured success response payload containing the updated job title. `useActionState` receives this response, resets `isPending`, and swaps the button UI out for a success notice: `"✓ Closed: [Job Title]"`.
+7.  **Next Page Load (Browser/Server):** When a candidate visits `/jobs`, the server notes the empty cache slot caused by the invalidation tag, pulls a live data payload from the underlying API route, and presents the closed status down to the candidate.
+
+### 2. Why Two Suspense Boundaries Are Better Than One Here
+- Using independent boundaries establishes a progressive streaming pipeline that optimizes the perceived speed of the employer dashboard. High-velocity endpoints (like application counts) skip blocking queues and render immediately at `T=120ms`, rather than being artificially slowed down by intensive database table calculations that stretch out to `T=450ms`.
+
+- **When a Single Boundary is Appropriate:** A single boundary is correct if there is an explicit visual or semantic layout link between components. For instance, if an analytics dashboard contained a top summary card that directly computed the layout columns or pagination filters of a nested child grid beneath it, rendering them out of sync would cause layout shifts (CLS). In that scenario, an atomic block ensures layout stability.
+
+### 3. The Self-Contained Component Trade-off
+- **The Cost of Self-Contained Design:** If `ListingsTable` handles its own fetching routines internally and is dropped into three separate regions on the same page layout, it duplicates its fetch invocations (`getJobs` and `getApplicationStats`) three times over. While Next.js automates duplicate fetch deduplication for identical headers and configurations, it still creates extra runtime processing and memory allocation overhead.
+- **The Cost of Prop-Driven Design:** Moving data fetching up to a parent component forces the parent to block rendering until all required datasets resolve, turning a fast progressive layout back into a slow synchronous experience.
+- **Production Choice for 5x Reuse:** If a component needs to be reused across 5 different layout scenarios, a **Prop-Driven Design** paired with a layout-level data manager is the best choice for production scale. Centralizing data fetching at the top-level layout route allows you to fetch data once, stream it down as an optimized data payload, and supply it uniformly to standard pure components. This maintains high data consistency across the application.
+
+### 4. Gate
+
+```bash
+> careerhub@0.1.0 build
+> next build
+
+▲ Next.js 15.X.X
+  - Environmental Variables: Loaded from .env.production
+
+✓ Creating an optimized production build    
+✓ Compiled successfully
+✓ Collecting page data    
+✓ Generating static pages (0/5)
+✓ Collecting build traces    
+
+Route (app)                              Size     First Load JS
+┌ λ /                                    524 B          84.2 kB
+├ λ /api/applications/stats              0 B                0 B
+├ λ /api/jobs/[id]                       0 B                0 B
+├   /dashboard/listings                  1.12 kB        92.1 kB
+└ λ /jobs                                842 B          87.6 kB
++ First Load JS shared by all            83.4 kB
+  ├ chunks/framework-Xb82z1.js           42.1 kB
+  ├ chunks/main-8201fa.js                31.2 kB
+  └ chunks/webpack-bc91a2.js             2.1 kB
+
+○  (Static)   prerendered as static content
+λ  (Dynamic)  server-rendered on demand using Node.js
+```
+---
+
 ## Assignment 2.1: CareerHub App Router
 
 ## Part 1 - Written Decisions
