@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JobListing } from "../../../types/JobListing";
 import { JobStatusBadge } from "../../../components/JobStatusBadge";
-import ApplicationForm from "../../../components/ApplicationForm"; // Uses your 1.4 form completely untouched
+import ApplicationForm from "../../../components/ApplicationForm";
+import { auth } from "@/src/auth";
 
 export const dynamic = "force-dynamic";
 
 interface JobDetailPageProps {
-   params: {
+  params: {
     id: string;
   };
 }
@@ -17,8 +18,8 @@ async function getSingleJob(id: string): Promise<JobListing | null> {
 
   try {
     const response = await fetch(`${backendBaseUrl}/api/v1/jobs/${id}`, {
-next: { tags: ["jobs"] },  
-  });
+      next: { tags: ["jobs"] },
+    });
 
     if (response.status === 404) return null;
     if (!response.ok)
@@ -26,24 +27,29 @@ next: { tags: ["jobs"] },
 
     return response.json();
   } catch (error) {
-    // Unhandled network exceptions surface to the default Next.js error page
     throw error;
   }
 }
 
 export default async function JobDetailPage({ params }: JobDetailPageProps) {
-  // Unpack dynamic routing promise parameter to satisfy Next.js engine specifications
   const unwrappedParams = await params;
-  const job = await getSingleJob(unwrappedParams.id);
 
-  // If the API returns a 404, trigger the official Next.js notFound boundary immediately
+  // Fetch job and session in parallel
+  const [job, session] = await Promise.all([
+    getSingleJob(unwrappedParams.id),
+    auth(),
+  ]);
+
   if (!job) {
     notFound();
   }
 
+  const role = session?.user?.role;
+  const isEmployer = role === "employer";
+  const isCandidate = role === "candidate";
+
   return (
     <main className="container mx-auto max-w-3xl px-4 py-8">
-      {/* Navigation Layer */}
       <div className="mb-6">
         <Link
           href="/jobs"
@@ -53,7 +59,6 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
         </Link>
       </div>
 
-      {/* Core Detail Board Card */}
       <article className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-gray-100 dark:border-gray-800">
           <div>
@@ -80,25 +85,35 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
           </p>
         </div>
 
-        {/* Composition Segment: Client-Side Form renders conditional to the status flag */}
         <div className="pt-6 border-t border-gray-100 dark:border-gray-800">
-          {job.isActive ? (
-            // <ApplicationForm
-            //   jobId={job.id}
-            //   jobTitle={job.title}
-            //   onSuccess={(applicantId) => {
-            //     console.log(`Application submitted successfully! ID: ${applicantId}`);
-            //   }}
-            // />
-            <ApplicationForm jobId={job.id} jobTitle={job.title} />
-          ) : (
+          {!job.isActive ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center dark:border-amber-900/50 dark:bg-amber-950/20">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-400">
                 🔒 This position has been closed and is no longer accepting
                 applications.
               </p>
             </div>
-          )}
+          ) : isEmployer ? (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-center dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                Employers cannot apply for jobs.
+              </p>
+            </div>
+          ) : !session ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center dark:border-blue-900/50 dark:bg-blue-950/20">
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-400">
+                You must be signed in to apply.{" "}
+                <Link
+                  href="/login"
+                  className="underline hover:text-blue-600 dark:hover:text-blue-300"
+                >
+                  Sign in here.
+                </Link>
+              </p>
+            </div>
+          ) : isCandidate ? (
+            <ApplicationForm jobId={job.id} jobTitle={job.title} />
+          ) : null}
         </div>
       </article>
     </main>
