@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { SessionProvider } from "next-auth/react";
+
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Using the useState initializer form ensures the QueryClient instance 
@@ -15,10 +17,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }));
 
   return (
-    //wrap children in query client provider
-    <QueryClientProvider client={queryClient}>
-      {children}
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
+    //wrap children in Session provider for Authentication
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        {children}
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </SessionProvider>
   );
 }
