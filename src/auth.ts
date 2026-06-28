@@ -41,7 +41,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   callbacks: {
     async jwt({ token, user }) {
-      // user is only defined on first sign-in — copy role onto token then
+      // user only defined on first sign-in — copy role onto token
       if (user) {
         token.role = (user as { role: string }).role;
       }
