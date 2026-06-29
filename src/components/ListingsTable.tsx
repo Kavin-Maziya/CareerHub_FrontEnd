@@ -13,57 +13,19 @@ interface BackendJob {
   employmentType: EmploymentType;
 }
 
-interface StatEntry {
-  jobId: string;
-  applicationCount: number;
-}
-
 interface ListingsTableProps {
+  jobs: BackendJob[];
+  statsMap: Map<string, number>;
   view: "table" | "grid";
   showClosedJobs: boolean;
 }
 
-async function getJobs(): Promise<BackendJob[]> {
-  const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (!backendBaseUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured");
-
-  const response = await fetch(
-    `${backendBaseUrl}/api/v1/jobs/all?page=1&pageSize=100`,
-    { next: { tags: ["jobs"] } }
-  );
-
-  if (!response.ok) throw new Error(`Jobs fetch failed (${response.status})`);
-
-  const result = await response.json();
-  return result.data ?? [];
-}
-
-async function getApplicationStats(): Promise<StatEntry[]> {
-  const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
-  if (!backendBaseUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured");
-
-  const response = await fetch(
-    `${backendBaseUrl}/api/v1/jobs/all?page=1&pageSize=100`,
-    { cache: "no-store" }
-  );
-
-  if (!response.ok) throw new Error(`Stats fetch failed (${response.status})`);
-
-  const result = await response.json();
-  const jobs: BackendJob[] = result.data ?? [];
-
-  return jobs.map((job) => ({
-    jobId: job.id,
-    applicationCount: job.applicationCount,
-  }));
-}
-
-export default async function ListingsTable({ view, showClosedJobs }: ListingsTableProps) {
-  const [jobs, stats] = await Promise.all([getJobs(), getApplicationStats()]);
-
-  const statsMap = new Map(stats.map((s) => [s.jobId, s.applicationCount]));
-
-  // Filter closed jobs if showClosedJobs is false
+export default function ListingsTable({
+  jobs,
+  statsMap,
+  view,
+  showClosedJobs,
+}: ListingsTableProps) {
   const visibleJobs = showClosedJobs
     ? jobs
     : jobs.filter((job) => job.isActive);
@@ -78,7 +40,6 @@ export default async function ListingsTable({ view, showClosedJobs }: ListingsTa
     );
   }
 
-  // Grid view
   if (view === "grid") {
     return (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -120,7 +81,6 @@ export default async function ListingsTable({ view, showClosedJobs }: ListingsTa
     );
   }
 
-  // Table view (default)
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900">
       <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-800 text-left text-sm">

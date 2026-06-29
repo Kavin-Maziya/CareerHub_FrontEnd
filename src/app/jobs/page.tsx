@@ -82,7 +82,8 @@ async function getJobs(filters: {
       job.location.toLowerCase().includes(filters.location.toLowerCase());
 
     const matchesStatus =
-      filters.status === "all" || job.isActive === true;
+    filters.status === "all" ||
+     (filters.status === "open" && job.isActive);
 
     return matchesKeyword && matchesLocation && matchesStatus;
   });

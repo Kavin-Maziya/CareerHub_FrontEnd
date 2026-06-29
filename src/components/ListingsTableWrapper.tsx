@@ -1,19 +1,38 @@
 "use client";
 
-import {
-  useView,
-  useShowClosedJobs,
-} from "@/src/stores/dashboardStore";
+import { useView, useShowClosedJobs } from "@/src/stores/dashboardStore";
+import ListingsTable from "./ListingsTable";
+import { EmploymentType } from "../types/JobListing";
 
-interface ListingsTableWrapperProps {
-  children: (props: {
-    view: "table" | "grid";
-    showClosedJobs: boolean;
-  }) => React.ReactNode;
+interface BackendJob {
+  id: string;
+  title: string;
+  companyName: string;
+  location: string;
+  isActive: boolean;
+  applicationCount: number;
+  employmentType: EmploymentType;
 }
 
-export default function ListingsTableWrapper({ children }: ListingsTableWrapperProps) {
+interface ListingsTableWrapperProps {
+  jobs: BackendJob[];
+  statsMap: [string, number][];
+}
+
+export default function ListingsTableWrapper({
+  jobs,
+  statsMap,
+}: ListingsTableWrapperProps) {
+  // One useStore call per value — no destructuring
   const view = useView();
   const showClosedJobs = useShowClosedJobs();
-  return <>{children({ view, showClosedJobs })}</>;
+
+  return (
+    <ListingsTable
+      jobs={jobs}
+      statsMap={new Map(statsMap)}
+      view={view}
+      showClosedJobs={showClosedJobs}
+    />
+  );
 }

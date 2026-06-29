@@ -4,9 +4,53 @@ import ApplicationsSummarySkeleton from "@/src/components/ApplicationsSummarySke
 import ListingsTableSkeleton from "@/src/components/ListingsTableSkeleton";
 import DashboardToolbar from "@/src/components/DashboardToolbar";
 import ListingsTableWrapper from "@/src/components/ListingsTableWrapper";
-import ListingsTable from "@/src/components/ListingsTable";
+import { EmploymentType } from "@/src/types/JobListing";
+
+interface BackendJob {
+  id: string;
+  title: string;
+  companyName: string;
+  location: string;
+  isActive: boolean;
+  applicationCount: number;
+  employmentType: EmploymentType;
+}
+
+async function getJobs(): Promise<BackendJob[]> {
+  const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!backendBaseUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured");
+
+  const response = await fetch(
+    `${backendBaseUrl}/api/v1/jobs/all?page=1&pageSize=100`,
+    { next: { tags: ["jobs"] } }
+  );
+
+  if (!response.ok) throw new Error(`Jobs fetch failed (${response.status})`);
+
+  const result = await response.json();
+  return result.data ?? [];
+}
+
+async function getStats(): Promise<[string, number][]> {
+  const backendBaseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!backendBaseUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured");
+
+  const response = await fetch(
+    `${backendBaseUrl}/api/v1/jobs/all?page=1&pageSize=100`,
+    { cache: "no-store" }
+  );
+
+  if (!response.ok) throw new Error(`Stats fetch failed (${response.status})`);
+
+  const result = await response.json();
+  const jobs: BackendJob[] = result.data ?? [];
+
+  return jobs.map((job) => [job.id, job.applicationCount]);
+}
 
 export default async function DashboardListingsPage() {
+  const [jobs, statsMap] = await Promise.all([getJobs(), getStats()]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -22,21 +66,17 @@ export default async function DashboardListingsPage() {
         <ApplicationsSummary />
       </Suspense>
 
+      {/* Client Component — reads Zustand store, renders toolbar */}
       <DashboardToolbar />
 
-      {/* 
-        ListingsTableWrapper is a Client Component that reads from the Zustand store.
-        It uses the render prop pattern to pass store values into the Server Component
-        without violating the Server/Client boundary — the page (a Server Component)
-        is responsible for rendering ListingsTable with the props provided.
+      {/*
+        Page fetches data server-side and passes it to the Client Component wrapper.
+        The wrapper reads view and showClosedJobs from the Zustand store and passes
+        all values as props to ListingsTable — bridging the Server/Client boundary.
       */}
-      <ListingsTableWrapper>
-        {({ view, showClosedJobs }) => (
-          <Suspense fallback={<ListingsTableSkeleton />}>
-            <ListingsTable view={view} showClosedJobs={showClosedJobs} />
-          </Suspense>
-        )}
-      </ListingsTableWrapper>
+      <Suspense fallback={<ListingsTableSkeleton />}>
+        <ListingsTableWrapper jobs={jobs} statsMap={statsMap} />
+      </Suspense>
     </div>
   );
 }
