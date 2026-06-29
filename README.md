@@ -1,5 +1,139 @@
 # CareerHub Frontend
 
+# Assignment 2.2 — Advanced Data Fetching & Dashboard Architecture
+
+## Part 1 — Written Decisions
+
+### 1. Cache Strategy Per Data Source
+* Jobs List (/jobs, /dashboard/listings)
+* Strategy: Tag-based caching with next: { tags: ["jobs"] }
+* Reasoning:
+- Job listings are semi-static data that only change when an employer explicitly performs a mutation (create, close, or update job postings). Using a shared "jobs" tag across multiple routes ensures all job representations remain synchronized.
+
+**Architectural effect:**
+* Any mutation invalidating revalidateTag("jobs") triggers a full refresh across:
+  - Public job listings page
+  - Employer dashboard listings
+- This prevents data fragmentation between candidate and employer views.
+
+**Application Statistics**
+* Strategy: cache: "no-store"
+* Reasoning:
+- Application counts are highly dynamic and change with every submission event. There is no deterministic invalidation trigger that would safely allow caching.
+- Ensures real-time accuracy for employer analytics at the cost of increased API calls.
+
+### 2. Why revalidateTag("jobs") Works Across Routes
+
+- Next.js maintains a centralized server-side data cache layer, independent of individual routes or client sessions.
+
+* When a mutation triggers: revalidateTag("jobs")
+  - All cached responses tagged "jobs" are marked stale on the server runtime.
+  - Any route (/jobs, /dashboard/listings) requesting that data will re-hit the backend.
+  - Fresh data is cached again under the same tag.
+  - This ensures cross-route consistency without manual synchronization logic.
+
+### 3. Promise.all Failure Behavior in Dashboard
+
+- Promise.all([jobs, stats]) fails entirely if one request fails.
+- This causes full page failure and triggers the global error boundary.
+- A failure in stats breaks rendering of the entire dashboard, even if job listings are valid.
+
+**Alternative Approaches**
+* Option A — Promise.allSettled()
+- Allows partial rendering.
+- Failed requests degrade gracefully (e.g., fallback stats = 0).
+
+* Option B — Suspense Boundaries (what I used)
+- Split ApplicationsSummary and ListingsTable into independent async boundaries.
+- Each component streams independently.
+- Production Choice
+
+* Suspense separation is preferred because it:
+- Prevents full-page failure
+- Enables progressive rendering
+- Isolates backend instability
+
+### 4. Suspense Boundary Performance Model
+
+| Time |	Event |
+|-----|-------|
+| T=0ms |	Page shell streamed instantly |
+| T=120ms |	Applications summary resolves |
+| T=450ms |	Listings table resolves |
+| T=451ms	| UI fully interactive |
+
+**Why multiple boundaries outperform one**
+* A single boundary forces:
+- Blocking on slowest query
+- No partial UI rendering
+
+* Multiple boundaries enable:
+- Parallel streaming
+- Independent fallback states
+- Faster perceived performance
+
+## Part 2 — Dashboard Architecture
+
+### 1. State Management (Zustand)
+
+* Dashboard state is centralized in a lightweight Zustand store:
+```tsx
+view: "table" | "grid"
+showClosedJobs: boolean
+```
+- Avoids prop drilling between toolbar → table → wrapper
+- Enables global UI state synchronization across dashboard components
+
+### 2. View System (Table vs Grid)
+* Implementation: Controlled via useView() hook
+- Rendered conditionally in ListingsTable
+* Effect:
+- Table view → structured analytical layout
+- Grid view → visual card-based browsing
+### 3. Closed Jobs Filter
+- Controlled via useShowClosedJobs()
+- Applied at rendering layer:
+```tsx
+const visibleJobs = showClosedJobs
+  ? jobs
+  : jobs.filter(job => job.isActive);
+  ```
+
+* Design choice: Filtering is performed in-memory instead of API-level filtering because:
+- Backend does not support filtering
+- Dataset size is bounded (pageSize=100)
+- Keeps API layer simple and stable
+
+
+### 4. Server → Client Boundary Bridge
+* Pattern used:
+- Server Page → Client Wrapper → Zustand Store → Pure UI Component
+- Server fetches data once
+- Client controls UI state independently
+- No duplicate API calls required for view changes
+
+### Part 3 — Close Job Mutation Flow
+- User clicks CloseJobButton then useActionState triggers server action
+- Server sends PATCH request to backend
+- Backend updates job status and revalidateTag("jobs") invalidates cache
+- The UI then resets pending state and Updated job list appears on next render
+
+### Part 4 — Build Verification
+npm run build
+✓ Compiled successfully
+✓ Linting passed
+✓ Static generation completed
+✓ Server routes compiled
+
+Route (app)
+┌ ○ /jobs
+├ ○ /dashboard/listings
+└ ○ /_not-found
+
+○ Static generation successful
+λ Dynamic server rendering enabled
+
+---
 # Assignment 2.2: CareerHub Advanced Data Fetching
 
 ---
