@@ -16,7 +16,8 @@ export default function CloseJobButton({ jobId, currentStatus }: CloseJobButtonP
   useEffect(() => {
     if (state && state !== lastHandledState.current) {
       lastHandledState.current = state;
-
+      
+//wired toast notifications
       if (state.status === "success") {
         toast.success(`Closed: ${state.jobTitle}`);
       } else if (state.status === "error") {
