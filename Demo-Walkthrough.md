@@ -1,4 +1,6 @@
-# CareerHub Dashboard — Demo Walkthrough
+# CareerHub Dashboard 
+
+## Assignment 2.3 - Demo Walkthrough
 
 ---
 

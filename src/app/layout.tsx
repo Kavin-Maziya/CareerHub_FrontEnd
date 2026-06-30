@@ -5,6 +5,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import Providers from "./providers";
 import Link from "next/link";
 import { auth, signOut } from "@/src/auth";
+import { Toaster } from "sonner";
 
 const roboto = Roboto({
   weight: ["300", "400", "500", "700"],
@@ -113,6 +114,7 @@ export default async function RootLayout({
           </div>
         </header>
         <Providers>{children}</Providers>
+        <Toaster position="bottom-right" richColors />
       </body>
     </html>
   );

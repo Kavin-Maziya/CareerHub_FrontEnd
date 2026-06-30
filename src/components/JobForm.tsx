@@ -83,7 +83,13 @@ export default function JobForm() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      toast.success("Job posted successfully!");
       router.push("/jobs");
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create job."
+      );
     },
   });
 
