@@ -1,5 +1,159 @@
 # CareerHub Frontend
 
+## Assignment 3.2 
+![Frontend CI](https://github.com/KavinOzzie/CareerHub/actions/workflows/test.yml/badge.svg)
+
+## Part 1 — Written Decisions
+
+### Question 1 — What is worth testing?
+
+**Category A: High-value behaviours to test**
+
+- **Step navigation gating** — `handleNext` calls `trigger(stepFields[step])` and only advances if valid. A regression here either lets invalid data reach the review screen, or traps valid users on step 1. High-value because it's the wizard's core contract: no step advance without valid data.
+- **Auth gate at step 1** — `if (step === 1 && !isCandidate) setAuthError(true)`. A regression either blocks legitimate candidates from applying or lets non-candidates submit applications. Directly harms real users in both directions.
+- **Draft persistence round-trip** — the mount `useEffect` reads `localStorage`, parses it through `applicationWizardSchema.partial()`, and calls `reset()`. The `watch()` subscription writes on every change. A regression silently loses a candidate's in-progress application — the single worst failure mode in this component.
+- **Discard draft actually discards** — `handleDiscardDraft` clears storage, resets the form, resets to step 1, and closes the dialog. If this silently no-ops, a user believes their data is gone when it isn't (privacy/trust issue), or the form doesn't actually clear.
+- **Successful submit resets everything** — `onSuccess` invalidates queries, clears the draft, resets the form, resets to step 1. A regression risks duplicate submissions or a stale draft banner reappearing on a fresh application.
+- **Failed submit preserves entered values** — `onError` only toasts; it does not reset. A regression here means a network blip wipes a candidate's cover letter and they have to retype it — a real cost to the user.
+- **Review step shows correct, honest data** — `currentValues` is rendered via `displayValue()` with an explicit "Not provided" fallback for empty optional fields. This is the last thing a candidate sees before submitting; wrong data here is a trust failure even if the actual payload sent is correct.
+
+**Category B: NOT worth testing**
+
+- **Exact Tailwind classes / `cn()` output** (e.g. asserting `border-red-400` is applied). Gain: none for the user — a class-string test doesn't verify anything actually *looks* wrong, and it isn't a substitute for a real visual regression test. Loss: every design tweak (dark-mode adjustment, spacing pass) breaks the suite for no behavioural reason, training the team to ignore red CI.
+- **DOM structure / element counts** (e.g. "renders exactly N `<div>` elements"). Gain: nothing — div count isn't a user-facing contract and users don't experience "3 divs," they experience "I can see my years of experience field." Loss: any markup refactor (e.g. wrapping two fields in a new flex container) breaks the test even when the UI and behaviour are identical.
+- **Internal state values** (e.g. asserting the `step` state variable literally equals `2`). Not reachable from outside without exposing internals, and even if it were, it tests implementation instead of what's rendered — `getByRole("heading", { name: "..." })` already proves the same thing from the user's side, more durably.
+
+**Category C: Draft persistence — real vs mocked localStorage**
+
+I'd use **real jsdom `localStorage`**, not `vi.spyOn`. This component talks to the raw `localStorage` API directly (no wrapper), and the fragile part isn't "did `setItem` get called" — it's the **round trip**: `JSON.stringify` on write, `JSON.parse` + `applicationWizardSchema.partial().parse()` on read, and whether that successfully calls `reset()` with the right shape. A `vi.spyOn` mock only proves the call was made with some arguments; it can't tell you whether reading that value back actually produces a working, populated form. Real jsdom storage exercises the exact mount-time rehydration logic, including the `catch` branch that clears a corrupted draft — which a spy can't meaningfully simulate without reimplementing storage semantics inside the mock.
+
+What a jsdom test **can't** prove: real browser storage quotas, cross-tab `storage` event sync, or persistence across an actual page reload/navigation (jsdom's `localStorage` lives only for the test's lifetime). Those require e2e or manual browser verification.
+
+### Question 2 — Mocking the session
+
+`ApplicationWizard` does not call `useSession()` — it receives `isCandidate: boolean` as a prop. The actual session check happens upstream (server component/page), which is out of scope for this component's tests. **This is a deviation from the assignment brief**, which assumes the wizard calls `useSession()` directly. Because of this, Tests 5/6 don't need any next-auth mocking at all — they render with `isCandidate={false}` / `isCandidate={true}` directly as props.
+
+The `next-auth/react` mock is still implemented in `utils.tsx` as specified, for reuse by any component that *does* call `useSession()` directly (and for forward-compatibility if the wizard's auth-gate logic moves inward later).
+
+- **Approach 1 — `vi.mock("next-auth/react", ...)`:** Mocks the hook's return value entirely (`data`, `status`, `update`). Leaves nothing real — no JWT decoding, no `SessionProvider` context wiring, no revalidation behaviour. Best for components that just read `useSession().data.user.role` once per render.
+- **Approach 2 — real `SessionProvider` with `initialSession`:** Mocks only the network round-trip to `/api/auth/session` that `SessionProvider` normally makes on mount. Leaves the provider's actual context propagation, `update()` function, and focus-revalidation behaviour real.
+
+**Choice:** Approach 1, for any component that does call `useSession()` directly in this codebase — it gives full per-test control (unauthenticated / candidate / employer) with no provider boot overhead, and none of the components in this suite rely on `SessionProvider`'s revalidation behaviour, so Approach 2's extra realism buys nothing here.
+
+### Question 3 — MSW scope
+
+**`ApplicationWizard`** — one request across its entire lifecycle:
+
+| Method | URL pattern | Happy-path response |
+|---|---|---|
+| POST | `${NEXT_PUBLIC_API_URL}/api/v1/applications/apply` | `201` with a JSON `ApplicationResponse` body (must include `id` and/or `applicantId`, since `onSuccess` reads `response.applicantId ?? response.id`) |
+
+No GET fires on mount — `jobId`/`jobTitle` are passed in as props, not fetched. `queryClient.invalidateQueries({ queryKey: ["jobs"] })` in `onSuccess` doesn't itself trigger a network call in an isolated render of `ApplicationWizard`: invalidation only causes a refetch for queries that are actively mounted and subscribed elsewhere on the page. In a component test rendering only the wizard, there's nothing subscribed to `["jobs"]`, so this is a no-op network-wise.
+
+**`CloseJobButton`** — two sequential requests on confirm:
+
+| Method | URL pattern | Happy-path response |
+|---|---|---|
+| DELETE | `${NEXT_PUBLIC_API_URL}/api/v1/jobs/{jobId}/close` | `200`/`204`, component only checks `.ok` |
+| GET | `${NEXT_PUBLIC_API_URL}/api/v1/jobs/{jobId}` | `200` with `{ title: "..." }` (only `title` is read, for the success toast) |
+
+**What MSW cannot help test:** the draft `localStorage` behaviour (Q1c) — it's synchronous browser storage, not a network call, so it needs real jsdom `localStorage` assertions instead. Same for `AlertDialog` open/close state and toast rendering — pure client UI state with no request involved.
+
+### Question 4 — Test naming as specification
+
+- **a)** *Implementation* — asserts an internal state value, and factually wrong for this codebase (steps are `1`/`2`/`3`, not `'schedule'`). Rewrite: **"shows the step 2 heading after clicking Next with valid step 1 data"**
+- **b)** *Behaviour* — already asserts what's rendered, not internal state. Keep as-is (renaming "Schedule" to this app's actual step-2 heading text, e.g. "Your Application").
+- **c)** *Implementation* — asserts a specific API call was made rather than an outcome. Rewrite: **"preserves previously entered values when the user navigates back to step 1"** (verified via `getByDisplayValue`, not by spying on `localStorage.setItem`).
+- **d)** *Behaviour* — already describes what the user experiences. Keep as-is.
+- **e)** *Implementation* — a DOM element count, not a behaviour. Rewrite as one behaviour-focused test per meaningful state, e.g. **"shows a submitting indicator while the application is being submitted"**, rather than counting `role="status"` divs.
+
+## README Updates
+
+### 1. What makes a test high-value for this codebase
+
+I prioritised testing the things that lose or corrupt user-entered data if they
+break: step-gating validation, the auth gate at step 1, draft persistence
+(save-on-change and restore-on-mount), discard-draft, and the submit
+success/error paths — specifically that a failed submit does *not* clear the
+form. These all share the same failure mode: a silent regression here doesn't
+throw an error, it just quietly loses or corrupts a candidate's application
+data, which is the worst possible outcome for this component.
+
+I deliberately did **not** test exact Tailwind class strings or DOM element
+counts (e.g. "renders 3 divs with a given class"). Testing those would tie the
+suite to markup and styling decisions that change constantly and have no
+bearing on whether the form actually works — it would make the suite noisy
+and expensive to maintain without catching any real regression a user would
+notice.
+
+### 2. Session mocking approach
+
+`ApplicationWizard` doesn't call `useSession()` directly — it takes
+`isCandidate: boolean` as a prop, so the auth-gate tests (5/6) just pass that
+prop directly with no session mocking involved at all. This is a deviation
+from what the assignment brief assumes.
+
+The `next-auth/react` mock (Approach 1, `vi.mock("next-auth/react", …)`) is
+still wired up in `utils.tsx` for reuse by any component that *does* call
+`useSession()` itself — it fully replaces the hook's return value (`data`,
+`status`, `update`), so it verifies "does the component render correctly
+given a session value" but tells you nothing about real JWT decoding,
+`SessionProvider` context wiring, or session refresh behaviour. I chose it
+over a real `SessionProvider` because none of the components under test rely
+on session revalidation, and full per-test control over auth state (none /
+candidate / employer) matters more here than that extra realism.
+
+### 3. The localStorage question
+
+I used real jsdom `localStorage`, not a `vi.spyOn` mock. The risky part of
+this feature isn't "was `setItem` called" — it's the round trip: writing via
+`JSON.stringify`, then on the next mount reading it back through
+`JSON.parse` and `applicationWizardSchema.partial().parse()`, and confirming
+that actually rehydrates the form via `reset()`. A spy only proves a call
+happened with some arguments; it can't tell you whether reading that value
+back produces a working form, and it can't exercise the `catch` block that
+clears a corrupted draft. Real jsdom storage exercises the actual
+serialize/deserialize/validate/reset pipeline the way it really runs.
+
+What this *can't* prove: real browser storage quotas, cross-tab `storage`
+event syncing, or persistence across an actual page reload (jsdom's
+`localStorage` only lives for the length of the test, not across a real
+navigation) — those need e2e or manual browser verification.
+
+### 4. One test that surprised you
+
+*[Fill this in after you've actually run the suite — this is a placeholder
+based on reading the code, not an observed result.]*
+
+The strongest candidate based on how `handleNext` is written: the auth check
+runs **before** field validation —
+
+```ts
+const handleNext = async () => {
+  if (step === 1 && !isCandidate) {
+    setAuthError(true);
+    return; // <- exits before trigger() runs
+  }
+  ...
+  const valid = await trigger(stepFields[step]);
+```
+
+So if you render with `isCandidate={false}` **and** leave the step 1 fields
+empty, clicking Next shows only the sign-in message — no field validation
+errors appear at all, even though the fields are also invalid. If Test 5 was
+written assuming both messages would show, it would fail until you either
+only fill the fields (as I did) or drop the field-error assertion. If that's
+what happened when you ran it: that's not a bug, it's intentional
+short-circuiting — but it's worth documenting here since it's a deliberate
+priority order (auth checked before validation) that isn't obvious from
+reading step 1 alone.
+
+If something else actually surprised you when you ran the suite against your
+real project, replace this with that — this section is meant to reflect a
+real observation, not a predicted one.
+
+
+---
 ## Assignment 3.1 - CareerHub Rich UI & Form Patterns
 
 ## Part 1 - Written Decisions

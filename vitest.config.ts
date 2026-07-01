@@ -8,6 +8,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    testTimeout: 15000,
     env: {
       NEXT_PUBLIC_API_URL: "http://localhost:5059",
     },

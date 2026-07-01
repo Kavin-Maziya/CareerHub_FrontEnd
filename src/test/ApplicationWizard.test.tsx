@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -35,11 +35,15 @@ async function fillAllSteps(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("ApplicationWizard", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
   describe("Step navigation", () => {
-    it("renders the step 1 heading on mount", () => {
+    it("renders the step 1 heading on mount", async () => {
       renderWithProviders(<ApplicationWizard {...jobProps} isCandidate={true} />);
 
-      expect(screen.getByRole("heading", { name: /your details/i })).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: /your details/i })).toBeInTheDocument();
     });
 
     it("blocks advancement when required step 1 fields are empty", async () => {
@@ -125,10 +129,7 @@ describe("ApplicationWizard", () => {
       await fillAllSteps(user);
       await user.click(screen.getByRole("button", { name: /submit application/i }));
 
-      await waitFor(() => {
-        expect(screen.getByRole("heading", { name: /your details/i })).toBeInTheDocument();
-      });
-
+      await screen.findByRole("heading", { name: /your details/i });
       expect(screen.getByLabelText(/full name/i)).toHaveValue("");
     });
 
@@ -145,11 +146,9 @@ describe("ApplicationWizard", () => {
       await fillAllSteps(user);
       await user.click(screen.getByRole("button", { name: /submit application/i }));
 
-      await waitFor(() => {
-        expect(screen.getByRole("heading", { name: /review & submit/i })).toBeInTheDocument();
-      });
-
+      await screen.findByRole("heading", { name: /review & submit/i });
       expect(screen.getByText("Jane Candidate")).toBeInTheDocument();
+      expect(screen.getByText("jane@example.com")).toBeInTheDocument();
     });
   });
 });

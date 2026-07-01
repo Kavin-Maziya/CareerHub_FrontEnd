@@ -1,5 +1,24 @@
 # CareerHub Rich UI & Form Patterns
 
+## Assignment 3.2 - Testing Demo Walkthrough
+
+This walkthrough highlights the new frontend testing coverage for the user-visible behaviours introduced in Assignment 3.1. The goal is to prove the experience still works for a candidate applying for a job and for an employer closing a listing.
+
+### Testing focus
+- The wizard advances only when the current step is valid.
+- The draft restores from localStorage and remains visible to the user.
+- Auth gating blocks unauthenticated applicants from continuing.
+- Successful submission resets the wizard, while failed submission preserves the entered values.
+- The close-listing dialog confirms the destructive action through the observable UI flow.
+
+### Suggested verification steps
+1. Run `pnpm test:run` or `vitest run`.
+2. Confirm the suite reports 11 passing tests.
+3. Open the app locally and follow the wizard flow end-to-end.
+4. Confirm the same user-facing outcomes are visible in the browser as in the tests.
+
+---
+
 ## Assignment 3.1 - Demo Walkthrough
 
 ---
