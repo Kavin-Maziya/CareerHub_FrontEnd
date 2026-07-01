@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { closeJobListing } from "@/src/app/actions/closeJob";
+import { closeJobListing } from "@/app/actions/closeJob";
 import {
   AlertDialog,
   AlertDialogCancel,
