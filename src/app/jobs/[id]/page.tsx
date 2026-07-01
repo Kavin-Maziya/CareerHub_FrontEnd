@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JobListing } from "../../../types/JobListing";
 import { JobStatusBadge } from "../../../components/JobStatusBadge";
-import ApplicationForm from "../../../components/ApplicationForm";
+import ApplicationWizard from "../../../components/ApplicationWizard";
 import { auth } from "@/src/auth";
 
 export const dynamic = "force-dynamic";
@@ -99,21 +99,14 @@ export default async function JobDetailPage({ params }: JobDetailPageProps) {
                 Employers cannot apply for jobs.
               </p>
             </div>
-          ) : !session ? (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-center dark:border-blue-900/50 dark:bg-blue-950/20">
-              <p className="text-sm font-medium text-blue-800 dark:text-blue-400">
-                You must be signed in to apply.{" "}
-                <Link
-                  href="/login"
-                  className="underline hover:text-blue-600 dark:hover:text-blue-300"
-                >
-                  Sign in here.
-                </Link>
-              </p>
-            </div>
-          ) : isCandidate ? (
-            <ApplicationForm jobId={job.id} jobTitle={job.title} />
-          ) : null}
+          ) : (
+            /* Render Wizard for candidates and signed-out guests */
+            <ApplicationWizard 
+              jobId={job.id} 
+              jobTitle={job.title} 
+              isCandidate={isCandidate} 
+            />
+          )}
         </div>
       </article>
     </main>

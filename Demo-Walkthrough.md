@@ -1,4 +1,323 @@
-# CareerHub Dashboard — Demo Walkthrough
+# CareerHub Rich UI & Form Patterns
+
+## Assignment 3.2 - Testing Demo Walkthrough
+
+This walkthrough highlights the new frontend testing coverage for the user-visible behaviours introduced in Assignment 3.1. The goal is to prove the experience still works for a candidate applying for a job and for an employer closing a listing.
+
+### Testing focus
+- The wizard advances only when the current step is valid.
+- The draft restores from localStorage and remains visible to the user.
+- Auth gating blocks unauthenticated applicants from continuing.
+- Successful submission resets the wizard, while failed submission preserves the entered values.
+- The close-listing dialog confirms the destructive action through the observable UI flow.
+
+### Suggested verification steps
+1. Run `pnpm test:run` or `vitest run`.
+2. Confirm the suite reports 11 passing tests.
+3. Open the app locally and follow the wizard flow end-to-end.
+4. Confirm the same user-facing outcomes are visible in the browser as in the tests.
+
+---
+
+## Assignment 3.1 - Demo Walkthrough
+
+---
+
+## 1. Application Overview
+
+This walkthrough demonstrates the Week 3 Day 1 rich UI patterns added to CareerHub:
+
+- System-wide toast feedback with Sonner
+- A multi-step candidate application wizard
+- Backend-aligned application fields for experience, cover letter, and availability
+- Local draft persistence and discard confirmation
+- AlertDialog confirmation for closing job listings
+- Skeleton loaders that match the jobs page layout
+- Distinct empty states for no jobs vs no filter matches
+
+---
+
+## 2. Setup Checklist
+
+Before starting the demo:
+
+- Run the backend API.
+- Run the frontend with `npm run dev`.
+- Confirm `.env.local` contains `NEXT_PUBLIC_API_URL`.
+- Use one employer account for dashboard flows.
+- Use one candidate account for application flows.
+- Keep browser DevTools open for checking `localStorage`.
+
+---
+
+## 3. Toast Notifications
+
+### 3.1 Toaster placement
+
+Demo steps:
+
+1. Open any page in the app.
+2. Confirm toast notifications render from the bottom-right of the viewport.
+3. Confirm the navbar/header area is not covered by toast messages.
+
+Implementation points:
+
+- `sonner` is installed.
+- `<Toaster position="bottom-right" richColors />` is rendered in the root layout.
+- Toasts are used for mutation responses, not field validation.
+
+### 3.2 Close job toast
+
+Demo steps:
+
+1. Sign in as an employer.
+2. Navigate to `/dashboard/listings`.
+3. Click `Close` on an active listing.
+4. Confirm the AlertDialog opens.
+5. Click `Close listing`.
+6. Confirm a success toast appears.
+7. Confirm the listing updates after the mutation.
+
+Expected result:
+
+- Success appears as a toast.
+- No inline success banner is shown.
+
+### 3.3 Error toast
+
+Demo steps:
+
+1. Trigger a backend/API error by stopping the backend or using invalid API configuration.
+2. Attempt a mutation such as closing a listing or submitting an application.
+3. Confirm an error toast appears.
+
+Expected result:
+
+- API or mutation errors appear as toasts.
+- Field-level validation still appears inline beside fields.
+
+---
+
+## 4. Application Wizard
+
+### 4.1 Candidate happy path
+
+Demo steps:
+
+1. Sign in as a candidate.
+2. Navigate to `/jobs`.
+3. Open an active job detail page.
+4. Confirm the application UI is a three-step wizard:
+   - Step 1: Your Details
+   - Step 2: Your Application
+   - Step 3: Review & Submit
+5. Fill Step 1 and click `Next`.
+6. Fill Step 2, including years of experience, a 50+ character cover letter, source selection, and availability details.
+7. Click `Next`.
+8. Confirm the review step displays every field.
+9. Confirm empty optional fields show `Not provided`.
+10. Submit the application.
+
+Expected result:
+
+- Success toast appears.
+- Wizard resets to Step 1.
+- The draft is removed from `localStorage`.
+
+### 4.2 Current-step validation
+
+Demo steps:
+
+1. Open the wizard as a candidate.
+2. Click `Next` on Step 1 without filling required fields.
+3. Confirm inline errors appear for Step 1.
+4. Fill Step 1 correctly and click `Next`.
+5. Click `Next` on Step 2 without a cover letter or source selection.
+6. Confirm Step 2 inline errors appear.
+7. Enter an invalid LinkedIn URL on Step 2, such as `https://example.com/me`.
+8. Click `Next`.
+
+Expected result:
+
+- The wizard does not advance past invalid current-step fields.
+- Future-step fields do not block earlier steps.
+- LinkedIn validation attaches to the LinkedIn URL field.
+- Backend-required fields are collected before submit instead of being silently defaulted.
+
+### 4.3 Back button behavior
+
+Demo steps:
+
+1. Fill Step 1.
+2. Advance to Step 2.
+3. Type partial Step 2 information.
+4. Click `Back`.
+5. Confirm Step 1 values are still present.
+
+Expected result:
+
+- Back navigation does not validate Step 2.
+- Previously entered values remain intact.
+
+### 4.4 Signed-out user
+
+Demo steps:
+
+1. Sign out.
+2. Open an active job detail page.
+3. Confirm Step 1 renders.
+4. Click `Next`.
+
+Expected result:
+
+- The wizard does not advance.
+- Inline message appears: "You need to be signed in as a candidate to apply. Sign in here."
+- The user is not redirected automatically.
+
+### 4.5 Employer user
+
+Demo steps:
+
+1. Sign in as an employer.
+2. Open an active job detail page.
+
+Expected result:
+
+- The wizard does not render.
+- The page displays "Employers cannot apply for jobs."
+
+---
+
+## 5. Draft Persistence
+
+### 5.1 Auto-save and restore
+
+Demo steps:
+
+1. Open an active job detail page as a candidate.
+2. Fill part of the application.
+3. Open DevTools and confirm `localStorage` contains `careerhub-application-${jobId}`.
+4. Refresh the page.
+
+Expected result:
+
+- Values are restored automatically.
+- A dismissible banner appears: "You have a saved draft for this application. Restored automatically."
+- The restored draft includes backend-required fields such as years of experience, cover letter, availability, and notice period.
+
+### 5.2 Discard draft confirmation
+
+Demo steps:
+
+1. Create a draft.
+2. Refresh and confirm the draft restores.
+3. Click `Discard draft`.
+4. Confirm the AlertDialog opens.
+5. Click `Keep draft`.
+6. Confirm the draft remains.
+7. Open the dialog again and click `Discard draft`.
+
+Expected result:
+
+- `localStorage` draft is removed.
+- Wizard resets to Step 1.
+- Form fields are empty.
+- Restored-draft banner disappears.
+
+---
+
+## 6. AlertDialog Close Listing Flow
+
+Demo steps:
+
+1. Sign in as an employer.
+2. Navigate to `/dashboard/listings`.
+3. Click `Close` on an active listing.
+4. Confirm the dialog title is "Close this listing?"
+5. Confirm the description explains the listing will be closed and removed from the public board.
+6. Click `Keep listing`.
+7. Confirm the listing remains unchanged.
+8. Open the dialog again.
+9. Click `Close listing`.
+
+Expected result:
+
+- The destructive action does not happen on the first click.
+- Cancel leaves the listing unchanged.
+- Confirm calls the Server Action through `useTransition`.
+- Success toast appears after the listing closes.
+
+Implementation point:
+
+- The confirm button does not rely on `type="submit"` inside the dialog portal.
+- The client constructs `FormData` and calls the Server Action programmatically.
+
+---
+
+## 7. Jobs Page Loading and Empty States
+
+### 7.1 Skeleton loader
+
+Demo steps:
+
+1. Navigate to `/jobs`.
+2. Observe the page while data is loading.
+
+Expected result:
+
+- Six `JobCardSkeleton` cards appear.
+- The loading UI resembles the real card grid.
+- No spinner or blank loading area is used.
+
+### 7.2 Filter-empty state
+
+Demo steps:
+
+1. Navigate to `/jobs?q=zzzzzzzzz`.
+2. Confirm the page shows "No jobs match your search."
+3. Confirm the active filter summary appears.
+4. Click `Clear all filters`.
+
+Expected result:
+
+- URL search params reset.
+- The real jobs list renders again.
+
+### 7.3 Database-empty state
+
+Demo steps:
+
+1. Use an empty backend jobs dataset.
+2. Navigate to `/jobs`.
+
+Expected result:
+
+- The page shows "No jobs are currently listed."
+- No action button appears because the user cannot fix an empty database.
+
+---
+
+## 8. Build Verification
+
+Command:
+
+```bash
+npm run build
+```
+
+Expected result:
+
+- Production build compiles successfully.
+- TypeScript finishes with zero errors.
+- The only noted warning is the Next.js middleware-to-proxy deprecation warning.
+
+---
+
+## Assignment 2.3 - Demo Walkthrough
+
+# CareerHub Dashboard 
+
+## Assignment 2.3 - Demo Walkthrough
 
 ---
 
