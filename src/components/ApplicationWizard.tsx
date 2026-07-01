@@ -8,6 +8,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import Link from "next/link";
 import { submitApplication } from "../lib/applicationsApi";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const applicationWizardSchema = z
   .object({
@@ -65,6 +75,8 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
   const queryClient = useQueryClient();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [showDraftBanner, setShowDraftBanner] = useState(false);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [isDiscardOpen, setIsDiscardOpen] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const storageKey = `careerhub-application-${jobId}`;
@@ -83,7 +95,7 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
 
   const { register, handleSubmit, trigger, watch, reset, formState: { errors } } = form;
 
-  // 1. Restore draft on mount safely
+  // Check and restore draft on mount reactively
   useEffect(() => {
     const savedDraft = localStorage.getItem(storageKey);
     if (savedDraft) {
@@ -91,16 +103,18 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
         const parsed = JSON.parse(savedDraft);
         reset(parsed);
         setShowDraftBanner(true);
+        setHasDraft(true);
       } catch (e) {
         console.error("Failed to restore draft", e);
       }
     }
   }, [reset, storageKey]);
 
-  // 2. Setup properly cleaned-up watch subscription for reactive auto-saving
+  // Cleaned-up watch subscription for auto-saving
   useEffect(() => {
     const subscription = watch((value) => {
       localStorage.setItem(storageKey, JSON.stringify(value));
+      setHasDraft(true);
     });
     return () => subscription.unsubscribe();
   }, [watch, storageKey]);
@@ -114,7 +128,6 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
         phone: values.phone,
         coverLetter: values.coverLetter || "",
         linkedInUrl: values.linkedInUrl || "",
-        // Preserving existing required backend API fallbacks gracefully
         yearsOfExperience: 0,
         availableImmediately: true,
         noticePeriodWeeks: 0,
@@ -122,9 +135,9 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       
-      // Clear draft on successful submission
       localStorage.removeItem(storageKey);
       setShowDraftBanner(false);
+      setHasDraft(false);
       reset();
       setStep(1);
 
@@ -159,6 +172,23 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
     setStep((prev) => (prev - 1) as 1 | 2);
   };
 
+  const handleDiscardDraft = () => {
+    localStorage.removeItem(storageKey);
+    reset({
+      fullName: "",
+      email: "",
+      phone: "",
+      coverLetter: "",
+      linkedInUrl: "",
+      howDidYouHear: "",
+    });
+    setHasDraft(false);
+    setShowDraftBanner(false);
+    setStep(1);
+    setIsDiscardOpen(false);
+    toast.success("Draft discarded successfully.");
+  };
+
   const onValidSubmit = async (data: WizardFormData) => {
     await mutation.mutateAsync(data);
   };
@@ -183,22 +213,59 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
         </div>
       )}
 
-      {/* Wizard Header / Progress Indicator */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-4">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
-          Apply for {jobTitle}
-        </h3>
-        <div className="mt-3 flex items-center gap-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
-          <span className={cn(step === 1 ? "text-blue-600 dark:text-blue-400 font-bold" : "")}>1. Details</span>
-          <span>→</span>
-          <span className={cn(step === 2 ? "text-blue-600 dark:text-blue-400 font-bold" : "")}>2. Application</span>
-          <span>→</span>
-          <span className={cn(step === 3 ? "text-blue-600 dark:text-blue-400 font-bold" : "")}>3. Review</span>
+      {/* Header section with reactive Discard Draft Dialog */}
+      <div className="border-b border-gray-100 dark:border-gray-800 pb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+            Apply for {jobTitle}
+          </h3>
+          <div className="mt-3 flex items-center gap-4 text-xs font-semibold uppercase tracking-wider text-gray-400">
+            <span className={cn(step === 1 ? "text-blue-600 dark:text-blue-400 font-bold" : "")}>1. Details</span>
+            <span>→</span>
+            <span className={cn(step === 2 ? "text-blue-600 dark:text-blue-400 font-bold" : "")}>2. Application</span>
+            <span>→</span>
+            <span className={cn(step === 3 ? "text-blue-600 dark:text-blue-400 font-bold" : "")}>3. Review</span>
+          </div>
         </div>
+
+        {/* Part 4b: Pure Client-Side Discard Draft Trigger */}
+        {hasDraft && (
+          <AlertDialog open={isDiscardOpen} onOpenChange={setIsDiscardOpen}>
+            <AlertDialogTrigger asChild>
+              <button
+                type="button"
+                className="rounded-md border border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-900/30 dark:bg-red-950/20 px-3 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 transition-all shadow-sm"
+              >
+                Discard draft
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent
+              onPointerDownOutside={(e) => e.preventDefault()}
+              onEscapeKeyDown={(e) => e.preventDefault()}
+            >
+              <AlertDialogHeader>
+                <AlertDialogTitle>Discard your draft?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Your saved application progress will be permanently deleted. This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep draft</AlertDialogCancel>
+                <button
+                  type="button"
+                  onClick={handleDiscardDraft}
+                  className="inline-flex h-9 items-center justify-center rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-all"
+                >
+                  Discard draft
+                </button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       <form onSubmit={handleSubmit(onValidSubmit)} noValidate className="space-y-6">
-        {/* STEP 1: Your Details */}
+        {/* STEP 1: Details */}
         {step === 1 && (
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -268,7 +335,7 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
           </div>
         )}
 
-        {/* STEP 2: Your Application */}
+        {/* STEP 2: Application */}
         {step === 2 && (
           <div className="space-y-4">
             <div>
@@ -332,7 +399,7 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
           </div>
         )}
 
-        {/* STEP 3: Review & Submit */}
+        {/* STEP 3: Review */}
         {step === 3 && (
           <div className="space-y-4 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-950/40">
             <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">Review Your Information</h4>
@@ -387,7 +454,7 @@ export default function ApplicationWizard({ jobId, jobTitle, isCandidate, onSucc
               <button
                 type="button"
                 onClick={handleNext}
-                className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-sm font-semibold text-white transition-all shadow-sm shadow-blue-500/10"
               >
                 Next
               </button>
