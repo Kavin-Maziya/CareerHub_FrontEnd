@@ -7,7 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { submitApplication } from "@/lib/applicationsApi";
+import { submitApplication } from "../lib/applicationsApi";
+import type { ApplicationResponse } from "../types/ApplicationRequest";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -184,7 +185,7 @@ export default function ApplicationWizard({
     setHasDraft(true);
   };
 
-  const mutation = useMutation({
+  const mutation = useMutation<ApplicationResponse, Error, WizardFormData>({
     mutationFn: (values: WizardFormData) =>
       submitApplication({
         jobId,
@@ -197,7 +198,7 @@ export default function ApplicationWizard({
         availableImmediately: values.availableImmediately,
         noticePeriodWeeks: values.noticePeriodWeeks,
       }),
-    onSuccess: (response) => {
+    onSuccess: (response: ApplicationResponse) => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       skipNextSaveRef.current = true;
       reset(defaultValues);

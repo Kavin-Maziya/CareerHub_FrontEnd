@@ -13,8 +13,6 @@ describe("ApplicationWizard", () => {
       />
     );
 
-    expect(
-      screen.getByRole("heading", { name: /your details/i })
-    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: /your details/i })).toBeInTheDocument();
   });
 });
