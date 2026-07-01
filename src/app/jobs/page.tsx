@@ -139,7 +139,7 @@ export default async function JobsPage({ searchParams }: JobsPageProps) {
                 </p>
                 {filters.q && (
                   <p className="text-xs text-gray-400 mt-1 dark:text-gray-500">
-                    Active Keyword constraint: "{filters.q}"
+                    Active Keyword constraint: &quot;{filters.q}&quot;
                   </p>
                 )}
               </div>

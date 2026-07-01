@@ -44,7 +44,7 @@ export async function closeJobListing(
 
     const updatedJob = jobResponse.ok ? await jobResponse.json() : { title: "the listing" };
 
-    revalidateTag("jobs");
+    revalidateTag("jobs", "max");
 
     return { status: "success", jobTitle: updatedJob.title };
   } catch {

@@ -1,5 +1,199 @@
 # CareerHub Frontend
 
+## Assignment 3.1 - CareerHub Rich UI & Form Patterns
+
+## Part 1 - Written Decisions
+
+### 1. Draft persistence strategy
+* Storage key:
+```ts
+careerhub-application-${jobId}
+```
+* Reasoning:
+- The draft belongs to one job application, not to the entire site.
+- Scoping the key by `jobId` allows a candidate to apply for two different jobs at the same time without one draft overwriting the other.
+- If I used one shared key like `careerhub-application-draft`, opening Job B after drafting Job A would restore Job A's answers into the wrong form.
+
+**Multiple jobs at the same time**
+* With the job-scoped key:
+  - Job A saves to `careerhub-application-jobA`.
+  - Job B saves to `careerhub-application-jobB`.
+  - Refreshing either page restores the matching draft only.
+
+**Different device behavior**
+* `localStorage` is browser and device specific.
+* If the same candidate switches devices, the draft does not follow them.
+* This is acceptable for this assignment because the requirement is local draft recovery, not server-side draft sync.
+
+**When the draft is cleared**
+* Successful submit:
+  - The saved work is no longer needed because the application has been sent.
+* Confirming "Discard draft":
+  - The user explicitly asked to delete saved progress.
+* Corrupt saved JSON:
+  - The app clears the invalid value so a broken draft cannot crash the wizard.
+
+**Fields stored in localStorage**
+* Safe to store:
+  - Full name
+  - Email address
+  - Optional phone number
+  - Optional cover letter
+  - Optional LinkedIn profile URL
+  - "How did you hear about this role?"
+* Deliberately excluded:
+  - Authentication tokens
+  - Session data
+  - User role data
+  - Any backend-only hidden values
+
+**Job requirements changing while a draft exists**
+* A restored draft still passes through the current Zod schema before the candidate can continue or submit.
+* This means old saved text is convenient, but it does not bypass current validation rules.
+
+### 2. The skeleton loader contract
+* Matching dimensions means the skeleton should reserve the same visual space as the real job card.
+* For a job card, the skeleton should share:
+  - The same grid placement
+  - The same card padding
+  - The same border radius
+  - Similar title, company, location, and badge line heights
+  - Similar spacing between sections
+
+**Filtered list count**
+* If the filter eventually returns 3 jobs but the loading UI shows 6 skeletons, the user briefly expects more content than appears.
+* In this app I show 6 skeleton cards as a design choice for the initial loading state because it fills two desktop rows in the 3-column grid.
+* The tradeoff is that 6 gives a stable page shape without pretending to know the final filtered result count before the request finishes.
+
+**Paired component pattern**
+* `JobCardSkeleton` is paired with the real job card/list card.
+* This means when the real card's layout changes, the skeleton should be updated with it.
+* If they drift apart, the loading state causes layout shift and the skeleton stops being a useful preview of the final content.
+
+### 3. AlertDialog vs the alternatives
+* Closing a job listing:
+  - I used `AlertDialog`.
+  - This is a destructive employer action because the job is marked closed and removed from the public board.
+* Discarding an application draft:
+  - I used `AlertDialog`.
+  - This permanently deletes saved local progress, so it needs a deliberate confirmation.
+* Submitting an application:
+  - I did not use an extra dialog.
+  - The review step already acts as the confirmation screen.
+
+**Server Action problem**
+* The close job flow is a Server Action, while `AlertDialog` is a client-side interaction.
+* The important issue is that `AlertDialogAction` is rendered in a Radix portal outside the original form element.
+* Because it is outside the form, `type="submit"` inside the dialog does nothing for the original form.
+
+**Chosen solution**
+* I kept the Server Action and call it programmatically from the confirm button using `useTransition`.
+* The client builds a `FormData` object with the `jobId` and passes it to `closeJobListing`.
+* This keeps the mutation on the server while avoiding a broken portal-based form submit.
+
+### 4. Empty state taxonomy
+* Empty database:
+  - Message: "No jobs are currently listed."
+  - Action: none.
+  - Reason: the candidate cannot fix a database with no listings.
+* Filters removed every result:
+  - Message: "No jobs match your search."
+  - Action: "Clear all filters."
+  - Reason: the user can fix this by changing or clearing the active filters.
+
+**Where the decision happens**
+* The distinction happens server-side in `src/app/jobs/page.tsx`.
+* The page fetches the full jobs collection first, checks whether the database result is empty, then applies the URL filters.
+* This works server-side because the server has both pieces of information:
+  - the unfiltered backend result count
+  - the filtered result count derived from the current search params
+
+## Part 2 - Toast Notifications
+* `sonner` is installed.
+* The root layout renders `<Toaster position="bottom-right" richColors />`.
+* Mutation responses use toasts:
+  - Closing a job shows success/error toast feedback.
+  - Application submission shows success/error toast feedback.
+  - Job creation shows success/error toast feedback.
+* Field-level validation remains inline next to the field because those errors tell the user what to fix.
+
+## Part 3 - Multi-step Application Wizard
+* `/jobs/[id]` renders `ApplicationWizard` instead of the old single-page form.
+* Wizard steps:
+  - Step 1: full name, email address, optional phone number.
+  - Step 2: optional cover letter, optional LinkedIn URL, source select.
+  - Step 3: read-only review and submit.
+* Validation:
+  - One Zod schema covers all fields.
+  - `trigger()` validates only the current step's field list.
+  - LinkedIn URLs must start with `https://linkedin.com/` or `https://www.linkedin.com/`.
+* Draft behavior:
+  - Saves to `localStorage` on field changes.
+  - Saves again when changing steps.
+  - Restores on mount and shows the required dismissible restored-draft banner.
+  - Clears on successful submit.
+* Auth behavior:
+  - Employers see "Employers cannot apply for jobs."
+  - Signed-out users can view Step 1, but clicking Next shows the inline sign-in prompt.
+
+## Part 4 - AlertDialog for Destructive Actions
+* Close listing confirmation:
+  - Title: "Close this listing?"
+  - Cancel: "Keep listing"
+  - Confirm: "Close listing"
+  - Uses `useTransition` to call the Server Action programmatically.
+* Discard draft confirmation:
+  - Title: "Discard your draft?"
+  - Cancel: "Keep draft"
+  - Confirm: "Discard draft"
+  - Clears localStorage, resets the form, hides the banner, and returns to Step 1.
+
+## Part 5 - Skeleton Loaders & Empty States
+* `/jobs/loading.tsx` renders 6 `JobCardSkeleton` cards.
+* `JobCardSkeleton` is paired with the real job card proportions instead of being a generic grey block.
+* `/jobs` handles both empty states:
+  - no jobs in the database
+  - filters eliminating all results
+* Filter-empty state includes a summary and the `ClearFiltersButton`.
+
+## Part 6 - Production Build Gate
+
+```text
+> careerhub-frontend@0.1.0 build
+> next build
+
+▲ Next.js 16.2.9 (Turbopack)
+- Environments: .env.local
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.9min
+✓ Finished TypeScript in 115s
+✓ Collecting page data using 1 worker in 7.2s
+layout rendered
+✓ Generating static pages using 1 worker (11/11) in 6.4s
+✓ Finalizing page optimization in 103ms
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /api/applications
+├ ƒ /api/applications/stats
+├ ƒ /api/auth/[...nextauth]
+├ ƒ /api/jobs
+├ ƒ /api/jobs/[id]
+├ ƒ /auth-redirect
+├ ƒ /dashboard/listings
+├ ƒ /jobs
+├ ƒ /jobs/[id]
+├ ƒ /jobs/create
+└ ƒ /login
+
+ƒ Proxy (Middleware)
+
+ƒ  (Dynamic)  server-rendered on demand
+```
+
 # Assignment 2.2 — Advanced Data Fetching & Dashboard Architecture
 
 ## Part 1 — Written Decisions

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm, SubmitHandler, Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -338,12 +339,12 @@ export default function JobForm() {
       </div>
 
       <div className="flex items-center justify-end gap-3">
-        <a
+        <Link
           href="/jobs"
           className="rounded-lg px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
         >
           Cancel
-        </a>
+        </Link>
         <button
           type="submit"
           disabled={isBusy}

@@ -57,10 +57,7 @@ export default function CloseJobButton({ jobId, currentStatus }: CloseJobButtonP
         </button>
       </AlertDialogTrigger>
 
-      <AlertDialogContent
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-      >
+      <AlertDialogContent onEscapeKeyDown={(e) => e.preventDefault()}>
         <AlertDialogHeader>
           <AlertDialogTitle>Close this listing?</AlertDialogTitle>
           <AlertDialogDescription>

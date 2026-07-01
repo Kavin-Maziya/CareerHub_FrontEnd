@@ -10,6 +10,8 @@ export function ThemeToggle() {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     const dark = stored ? stored === "dark" : prefersDark;
     document.documentElement.classList.toggle("dark", dark);
+    // The initial label mirrors localStorage/system preference after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsDark(dark);
   }, []);
 

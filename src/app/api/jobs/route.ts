@@ -1,3 +1,12 @@
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  return NextResponse.json(
+    { message: "Use the CareerHub backend jobs endpoint." },
+    { status: 410 },
+  );
+}
+
 // import { NextResponse } from "next/server";
 // //import { JobListing } from "@/types/JobListing";
 // import { JobListing } from "../../../types/JobListing";
