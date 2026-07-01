@@ -375,6 +375,9 @@ export default function ApplicationWizard({
 
         {step === 2 && (
           <div className="space-y-4">
+            <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              Your Application
+            </h4>
             <div>
               <label htmlFor="yearsOfExperience" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 Years of experience
