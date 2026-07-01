@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Resolver, SubmitHandler, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { submitApplication } from "@/src/lib/applicationsApi";
+import { submitApplication } from "@/lib/applicationsApi";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -23,10 +23,30 @@ const applicationWizardSchema = z
   .object({
     fullName: z.string().trim().min(2, "Full name must be at least 2 characters"),
     email: z.string().trim().email("Enter a valid email address"),
-    phone: z.string().trim().optional(),
-    coverLetter: z.string().max(2000, "Cover letter must be 2000 characters or fewer").optional(),
+    phone: z
+      .string()
+      .trim()
+      .regex(/^\+?[\d\s\-()]{8,15}$/, "Enter a valid phone number")
+      .or(z.literal(""))
+      .optional(),
+    yearsOfExperience: z.coerce
+      .number("Years of experience is required")
+      .int("Years of experience must be a whole number")
+      .min(0, "Years of experience cannot be negative")
+      .max(50, "Maximum 50 years"),
+    coverLetter: z
+      .string()
+      .trim()
+      .min(50, "Cover letter must be at least 50 characters")
+      .max(2000, "Cover letter must be 2000 characters or fewer"),
     linkedInUrl: z.string().trim().optional(),
     howDidYouHear: z.string().min(1, "Please select an option"),
+    availableImmediately: z.boolean(),
+    noticePeriodWeeks: z.coerce
+      .number()
+      .int("Notice period must be a whole number")
+      .min(0, "Notice period cannot be negative")
+      .max(52, "Notice period must be 52 weeks or fewer"),
   })
   .refine(
     (data) =>
@@ -37,6 +57,13 @@ const applicationWizardSchema = z
       message: "Must start with https://linkedin.com/ or https://www.linkedin.com/",
       path: ["linkedInUrl"],
     },
+  )
+  .refine(
+    (data) => data.availableImmediately || data.noticePeriodWeeks >= 1,
+    {
+      message: "Notice period must be at least 1 week if you are not available immediately",
+      path: ["noticePeriodWeeks"],
+    },
   );
 
 type WizardFormData = z.infer<typeof applicationWizardSchema>;
@@ -46,14 +73,24 @@ const defaultValues: WizardFormData = {
   fullName: "",
   email: "",
   phone: "",
+  yearsOfExperience: 0,
   coverLetter: "",
   linkedInUrl: "",
   howDidYouHear: "",
+  availableImmediately: true,
+  noticePeriodWeeks: 0,
 };
 
 const stepFields: Record<Step, (keyof WizardFormData)[]> = {
   1: ["fullName", "email", "phone"],
-  2: ["coverLetter", "linkedInUrl", "howDidYouHear"],
+  2: [
+    "yearsOfExperience",
+    "coverLetter",
+    "linkedInUrl",
+    "howDidYouHear",
+    "availableImmediately",
+    "noticePeriodWeeks",
+  ],
   3: [],
 };
 
@@ -91,7 +128,7 @@ export default function ApplicationWizard({
   const [isDiscardOpen, setIsDiscardOpen] = useState(false);
 
   const form = useForm<WizardFormData>({
-    resolver: zodResolver(applicationWizardSchema),
+    resolver: zodResolver(applicationWizardSchema) as Resolver<WizardFormData>,
     defaultValues,
   });
 
@@ -103,6 +140,7 @@ export default function ApplicationWizard({
     reset,
     formState: { errors },
   } = form;
+  const availableImmediately = watch("availableImmediately");
 
   useEffect(() => {
     try {
@@ -155,9 +193,9 @@ export default function ApplicationWizard({
         phone: values.phone || undefined,
         coverLetter: values.coverLetter || "",
         linkedInUrl: values.linkedInUrl || undefined,
-        yearsOfExperience: 0,
-        availableImmediately: true,
-        noticePeriodWeeks: 0,
+        yearsOfExperience: values.yearsOfExperience,
+        availableImmediately: values.availableImmediately,
+        noticePeriodWeeks: values.noticePeriodWeeks,
       }),
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
@@ -201,6 +239,10 @@ export default function ApplicationWizard({
     setStep(1);
     setAuthError(false);
     setIsDiscardOpen(false);
+  };
+
+  const onValidSubmit: SubmitHandler<WizardFormData> = (values) => {
+    mutation.mutate(values);
   };
 
   const currentValues = watch();
@@ -268,9 +310,12 @@ export default function ApplicationWizard({
         )}
       </div>
 
-      <form onSubmit={handleSubmit((values) => mutation.mutate(values))} noValidate className="space-y-6">
+      <form onSubmit={handleSubmit(onValidSubmit)} noValidate className="space-y-6">
         {step === 1 && (
           <div className="space-y-4">
+            <h4 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              Your Details
+            </h4>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label htmlFor="fullName" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -330,8 +375,26 @@ export default function ApplicationWizard({
         {step === 2 && (
           <div className="space-y-4">
             <div>
+              <label htmlFor="yearsOfExperience" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Years of experience
+              </label>
+              <input
+                {...register("yearsOfExperience", { valueAsNumber: true })}
+                id="yearsOfExperience"
+                type="number"
+                min={0}
+                max={50}
+                className={cn(
+                  "w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-900",
+                  errors.yearsOfExperience ? "border-red-400" : "border-gray-300 dark:border-gray-700",
+                )}
+              />
+              {errors.yearsOfExperience && <p className="mt-1 text-sm text-red-600">{errors.yearsOfExperience.message}</p>}
+            </div>
+
+            <div>
               <label htmlFor="coverLetter" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Cover letter (optional)
+                Cover letter
               </label>
               <textarea
                 {...register("coverLetter")}
@@ -382,6 +445,37 @@ export default function ApplicationWizard({
               </select>
               {errors.howDidYouHear && <p className="mt-1 text-sm text-red-600">{errors.howDidYouHear.message}</p>}
             </div>
+
+            <div className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
+              <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <input
+                  {...register("availableImmediately")}
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                Available immediately
+              </label>
+
+              <div>
+                <label htmlFor="noticePeriodWeeks" className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Notice period in weeks
+                </label>
+                <input
+                  {...register("noticePeriodWeeks", { valueAsNumber: true })}
+                  id="noticePeriodWeeks"
+                  type="number"
+                  min={0}
+                  max={52}
+                  disabled={availableImmediately}
+                  className={cn(
+                    "w-full rounded-lg border px-3 py-2 text-sm dark:bg-gray-900",
+                    availableImmediately && "cursor-not-allowed bg-gray-100 text-gray-500 dark:bg-gray-800",
+                    errors.noticePeriodWeeks ? "border-red-400" : "border-gray-300 dark:border-gray-700",
+                  )}
+                />
+                {errors.noticePeriodWeeks && <p className="mt-1 text-sm text-red-600">{errors.noticePeriodWeeks.message}</p>}
+              </div>
+            </div>
           </div>
         )}
 
@@ -404,8 +498,20 @@ export default function ApplicationWizard({
                 <dd className="text-gray-900 dark:text-gray-100">{displayValue(currentValues.phone)}</dd>
               </div>
               <div>
+                <dt className="font-medium text-gray-500">Years of experience</dt>
+                <dd className="text-gray-900 dark:text-gray-100">{currentValues.yearsOfExperience}</dd>
+              </div>
+              <div>
                 <dt className="font-medium text-gray-500">How you heard about this role</dt>
                 <dd className="text-gray-900 dark:text-gray-100">{displayValue(currentValues.howDidYouHear)}</dd>
+              </div>
+              <div>
+                <dt className="font-medium text-gray-500">Availability</dt>
+                <dd className="text-gray-900 dark:text-gray-100">
+                  {currentValues.availableImmediately
+                    ? "Available immediately"
+                    : `${currentValues.noticePeriodWeeks} week notice period`}
+                </dd>
               </div>
               <div className="sm:col-span-2">
                 <dt className="font-medium text-gray-500">LinkedIn profile URL</dt>

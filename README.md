@@ -38,9 +38,12 @@ careerhub-application-${jobId}
   - Full name
   - Email address
   - Optional phone number
-  - Optional cover letter
+  - Years of experience
+  - Cover letter
   - Optional LinkedIn profile URL
   - "How did you hear about this role?"
+  - Availability status
+  - Notice period in weeks
 * Deliberately excluded:
   - Authentication tokens
   - Session data
@@ -121,12 +124,18 @@ careerhub-application-${jobId}
 * `/jobs/[id]` renders `ApplicationWizard` instead of the old single-page form.
 * Wizard steps:
   - Step 1: full name, email address, optional phone number.
-  - Step 2: optional cover letter, optional LinkedIn URL, source select.
+  - Step 2: years of experience, cover letter, optional LinkedIn URL, source select, availability, and notice period.
   - Step 3: read-only review and submit.
 * Validation:
   - One Zod schema covers all fields.
   - `trigger()` validates only the current step's field list.
+  - Years of experience is required because the backend `CreateApplicationRequest` requires it.
+  - Cover letter is required and must be at least 50 characters because the backend validates that field before accepting an application.
   - LinkedIn URLs must start with `https://linkedin.com/` or `https://www.linkedin.com/`.
+  - If the candidate is not available immediately, notice period must be at least 1 week.
+* Backend alignment:
+  - The frontend submits `FullName`, `Email`, `Phone`, `YearsOfExperience`, `CoverLetter`, `LinkedInUrl`, `AvailableImmediately`, and `NoticePeriodWeeks` to match `C:\Projects\CareerHub\APIs\DTOs\CreateApplicationRequest.cs`.
+  - `howDidYouHear` is a frontend-only assignment field. It is saved in the draft and shown in review, but it is not sent to the backend because the backend DTO has no matching property.
 * Draft behavior:
   - Saves to `localStorage` on field changes.
   - Saves again when changing steps.

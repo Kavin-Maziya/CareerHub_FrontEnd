@@ -10,6 +10,7 @@ This walkthrough demonstrates the Week 3 Day 1 rich UI patterns added to CareerH
 
 - System-wide toast feedback with Sonner
 - A multi-step candidate application wizard
+- Backend-aligned application fields for experience, cover letter, and availability
 - Local draft persistence and discard confirmation
 - AlertDialog confirmation for closing job listings
 - Skeleton loaders that match the jobs page layout
@@ -92,10 +93,11 @@ Demo steps:
    - Step 2: Your Application
    - Step 3: Review & Submit
 5. Fill Step 1 and click `Next`.
-6. Fill Step 2 and click `Next`.
-7. Confirm the review step displays every field.
-8. Confirm empty optional fields show `Not provided`.
-9. Submit the application.
+6. Fill Step 2, including years of experience, a 50+ character cover letter, source selection, and availability details.
+7. Click `Next`.
+8. Confirm the review step displays every field.
+9. Confirm empty optional fields show `Not provided`.
+10. Submit the application.
 
 Expected result:
 
@@ -111,14 +113,17 @@ Demo steps:
 2. Click `Next` on Step 1 without filling required fields.
 3. Confirm inline errors appear for Step 1.
 4. Fill Step 1 correctly and click `Next`.
-5. Enter an invalid LinkedIn URL on Step 2, such as `https://example.com/me`.
-6. Click `Next`.
+5. Click `Next` on Step 2 without a cover letter or source selection.
+6. Confirm Step 2 inline errors appear.
+7. Enter an invalid LinkedIn URL on Step 2, such as `https://example.com/me`.
+8. Click `Next`.
 
 Expected result:
 
 - The wizard does not advance past invalid current-step fields.
 - Future-step fields do not block earlier steps.
 - LinkedIn validation attaches to the LinkedIn URL field.
+- Backend-required fields are collected before submit instead of being silently defaulted.
 
 ### 4.3 Back button behavior
 
@@ -179,6 +184,7 @@ Expected result:
 
 - Values are restored automatically.
 - A dismissible banner appears: "You have a saved draft for this application. Restored automatically."
+- The restored draft includes backend-required fields such as years of experience, cover letter, availability, and notice period.
 
 ### 5.2 Discard draft confirmation
 
